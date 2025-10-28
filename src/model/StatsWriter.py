@@ -32,12 +32,13 @@ class StatsWriter:
         return nm_value / self._unit_conversion_factors.get(to_unit, 1)
     
     def __get_diameters(self, stats):
+        """Calculate diameters using Equivalent Circular Diameter (ECD)."""
         import numpy as np
-        from cv2 import CC_STAT_HEIGHT, CC_STAT_WIDTH
+        from cv2 import CC_STAT_AREA
         diameters = np.empty(stats.shape[0]-1)
         for label_idx in range(1, stats.shape[0]):
-            width, height = stats[label_idx, CC_STAT_WIDTH], stats[label_idx, CC_STAT_HEIGHT]
-            diameter = np.mean([width, height])  
+            area = stats[label_idx, CC_STAT_AREA]
+            diameter = 2 * np.sqrt(area / np.pi)
             diameters[label_idx-1] = diameter
         return diameters
     

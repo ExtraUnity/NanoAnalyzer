@@ -199,7 +199,10 @@ def get_dataloaders_without_testset(dataset: Dataset, train_data_size: float, in
         train_data = data_augmenter.augment_dataset(train_data, input_size, [False, False, False, False, False, False, False])
     val_data = process_and_slice(val_data, input_size)
 
-    train_dataloader = DataLoader(train_data, batch_size=32, shuffle=True, drop_last=True)
+    if torch.cuda.is_available():
+        train_dataloader = DataLoader(train_data, batch_size=32, shuffle=True, drop_last=True, num_workers=24)
+    else:
+        train_dataloader = DataLoader(train_data, batch_size=8, shuffle=True, drop_last=True)
     val_dataloader = DataLoader(val_data, batch_size=1, shuffle=True, drop_last=True)
     return (train_dataloader, val_dataloader)
 

@@ -125,7 +125,7 @@ class ModelEvaluator():
         number_of_predictions_to_show = np.min([5, len(predictions)]) 
         indicies = random.sample(range(len(predictions)), number_of_predictions_to_show)
         if not test_callback:
-            return np.mean(ious), np.mean(dice_scores)
+            return EvaluationResult(ious, dice_scores)
         try:
             for i in indicies:
                 test_callback(inputs[i], predictions[i], labels[i], ious[i], dice_scores[i])
