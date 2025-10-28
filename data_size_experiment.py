@@ -50,7 +50,7 @@ class DataSizeExperiment:
             'training_times': []
         }
         
-    def prepare_data_splits(self, train_percentages, val_split=0.2, test_split=0.2, random_seed=42):
+    def prepare_data_splits(self, train_percentages, val_split=0.2, test_split=0.2, random_seed=42, input_size=(256, 256)):
         """
         Prepare data splits for the experiment.
         
@@ -59,6 +59,7 @@ class DataSizeExperiment:
             val_split: Validation set size as fraction of remaining data after test split
             test_split: Test set size as fraction of total data
             random_seed: Random seed for reproducibility
+            input_size: Size for slicing the dataset into patches
         """
         # Set random seed for reproducibility
         torch.manual_seed(random_seed)
@@ -68,8 +69,12 @@ class DataSizeExperiment:
         dataset = SegmentationDataset(self.images_path, self.masks_path)
         print(f"Total images in dataset: {len(dataset)}")
         
-        # Get all indices
-        total_size = len(dataset)
+        # Slice dataset into patches FIRST
+        dataset_sliced = slice_dataset_in_four(dataset, input_size)
+        print(f"Total patches after slicing: {len(dataset_sliced)}")
+        
+        # Get all indices from the SLICED dataset
+        total_size = len(dataset_sliced)
         indices = list(range(total_size))
         np.random.shuffle(indices)
         
@@ -84,9 +89,9 @@ class DataSizeExperiment:
         val_indices = train_val_indices[:val_size]
         available_train_indices = train_val_indices[val_size:]
         
-        print(f"Test set size: {len(test_indices)} images")
-        print(f"Validation set size: {len(val_indices)} images")
-        print(f"Available training pool: {len(available_train_indices)} images")
+        print(f"Test set size: {len(test_indices)} patches")
+        print(f"Validation set size: {len(val_indices)} patches")
+        print(f"Available training pool: {len(available_train_indices)} patches")
         
         # Create training sets for each percentage
         self.data_splits = {}
@@ -102,9 +107,9 @@ class DataSizeExperiment:
                 'num_val': len(val_indices),
                 'num_test': len(test_indices)
             }
-            print(f"{int(percentage*100)}% training data: {num_train} images")
+            print(f"{int(percentage*100)}% training data: {num_train} patches")
         
-        self.dataset = dataset
+        self.dataset_sliced = dataset_sliced
         self.test_indices = test_indices
         self.val_indices = val_indices
         
@@ -115,13 +120,11 @@ class DataSizeExperiment:
         """
         Create dataloaders for a specific data split.
         """
-        # Slice dataset into patches
-        dataset_sliced = slice_dataset_in_four(self.dataset, input_size)
-        
-        # Create subsets
-        train_subset = Subset(dataset_sliced, train_indices)
-        val_subset = Subset(dataset_sliced, val_indices)
-        test_subset = Subset(dataset_sliced, test_indices)
+        # Use the pre-sliced dataset
+        # Create subsets using indices from the sliced dataset
+        train_subset = Subset(self.dataset_sliced, train_indices)
+        val_subset = Subset(self.dataset_sliced, val_indices)
+        test_subset = Subset(self.dataset_sliced, test_indices)
         
         # Apply data augmentation to training set
         data_augmenter = DataAugmenter()
@@ -142,7 +145,7 @@ class DataSizeExperiment:
         
         return train_dataloader, val_dataloader, test_dataloader
     
-    def train_single_model(self, train_percentage, epochs=50, learning_rate=0.0001, 
+    def train_single_model(self, train_percentage, epochs=150, learning_rate=0.0001, 
                           input_size=(256, 256), with_augmentation=True):
         """
         Train a single model with a specific percentage of training data.
@@ -224,7 +227,7 @@ class DataSizeExperiment:
         return result
     
     def run_experiment(self, train_percentages=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-                      epochs=50, learning_rate=0.0001, input_size=(256, 256), 
+                      epochs=150, learning_rate=0.0001, input_size=(256, 256), 
                       with_augmentation=True, random_seed=42):
         """
         Run the complete experiment with multiple training data sizes.
@@ -242,7 +245,7 @@ class DataSizeExperiment:
         print(f"Random seed: {random_seed}")
         
         # Prepare data splits
-        self.prepare_data_splits(train_percentages, random_seed=random_seed)
+        self.prepare_data_splits(train_percentages, random_seed=random_seed, input_size=input_size)
         
         # Train models for each data size
         all_results = []
@@ -385,9 +388,9 @@ def main():
     train_percentages = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
     
     # Hyperparameters
-    epochs = 50
+    epochs = 150
     learning_rate = 0.0001
-    input_size = (512, 512)
+    input_size = (256, 256)
     with_augmentation = True
     random_seed = 42
     
