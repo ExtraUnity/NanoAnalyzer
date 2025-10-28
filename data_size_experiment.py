@@ -189,13 +189,13 @@ class DataSizeExperiment:
         unet.train_model(
             training_dataloader=train_dataloader,
             validation_dataloader=val_dataloader,
-            epochs=3,
+            epochs=epochs,
             learningRate=learning_rate,
             model_name=model_name,
             cross_validation="holdout",
             with_early_stopping=True,
             loss_function="combined",
-            scheduler_type="plateau"
+            scheduler_type="none"
         )
         training_time = (datetime.datetime.now() - start_time).total_seconds()
         
@@ -226,8 +226,8 @@ class DataSizeExperiment:
         
         return result
     
-    def run_experiment(self, train_percentages=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-                      epochs=150, learning_rate=0.0001, input_size=(256, 256), 
+    def run_experiment(self, train_percentages=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+                      epochs=50, learning_rate=0.0001, input_size=(256, 256), 
                       with_augmentation=True, random_seed=42):
         """
         Run the complete experiment with multiple training data sizes.
