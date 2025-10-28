@@ -150,6 +150,13 @@ class DataSizeExperiment:
         print(f"\n{'='*80}")
         print(f"Training with {int(train_percentage*100)}% of training data")
         print(f"{'='*80}")
+
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Using device: {device}")
+        if torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            print(f"Memory Available: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+    
         
         # Get data split
         split = self.data_splits[train_percentage]
@@ -166,7 +173,8 @@ class DataSizeExperiment:
         # Initialize model
         unet = UNet()
         unet.preferred_input_size = input_size
-        
+        unet = unet.to(device)
+
         # Get normalizer from training data
         normalizer = get_normalizer(train_dataloader.dataset.dataset)
         unet.normalizer = normalizer
