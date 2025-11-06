@@ -1,17 +1,21 @@
-from PIL import Image
 import threading
+from src.model.SegmentationAnalyzer import SegmentationAnalyzer
 from src.model.PlottingTools import *
 
 class RequestHandler:
     def __init__(self, pre_loaded_model_name=None):
         self.unet = None
+        self.segmenter = None
+        self.segmentation_analyzer = SegmentationAnalyzer()
         self.model_ready_event = threading.Event()
         self.load_model_async(pre_loaded_model_name)
 
     def load_model_async(self, model_name):
         def load():            
             from src.model.UNet import UNet
-            self.unet = UNet(pre_loaded_model_path=f"src/data/model/{model_name}")  # or UNet(pre_loaded_model_path=...)
+            from src.model.ImageSegmenter import ImageSegmenter
+            self.unet = UNet(pre_loaded_model_path=f"src/data/model/{model_name}")
+            self.segmenter = ImageSegmenter(self.unet)
             self.model_ready_event.set()
             print("Model ready")
 
@@ -23,8 +27,10 @@ class RequestHandler:
         
         from src.model.CrossValidation import cv_holdout
         from src.model.UNet import UNet
+        from src.model.ImageSegmenter import ImageSegmenter
         self.model_ready_event.wait()
         self.unet = UNet()
+        self.segmenter = ImageSegmenter(self.unet)
         import os
         os.makedirs(log_dir, exist_ok=True)
         log_file_path = os.path.join(log_dir, "training_evaluation.txt")
@@ -50,81 +56,25 @@ class RequestHandler:
             - Histogram figure
             - Stats (optional, only if return_stats is True)
         """
-        from src.model.DataTools import ImagePreprocessor
-        from src.model.SegmentationAnalyzer import SegmentationAnalyzer
-
         # Wait for model to be ready
         self.model_ready_event.wait()
-                
-        # 1. Initialize preprocessor
-        preprocessor = ImagePreprocessor(self.unet.preferred_input_size)
         
-        # 2. Prepare image patches
-        tensor, tensor_mirror_filled, patches, stride_length = preprocessor.prepare_image_patches(
-            image.pil_image, 
-            self.unet.device
-        )
+        # Step 1. Segment image
+        segmented_image_2d = self.segmenter.segment_image(image)
         
-        # 3. Run model inference
-        segmentations = self._run_model_inference(patches, tensor)
-        
-        # 4. Post-process segmentation output
-        segmented_image_2d = preprocessor.post_process_segmentation(
-            segmentations,
-            tensor_mirror_filled,
-            tensor,
-            stride_length
-        )
-        
-        # 5. Analyze results and generate statistics
-        analyzer = SegmentationAnalyzer()
-        results = analyzer.analyze_segmentation(segmented_image_2d, image.file_info, output_folder)
+        # Step 2. Analyze results and generate statistics
+        results = self.segmentation_analyzer.analyze_segmentation(segmented_image_2d, image.file_info, output_folder)
         
         if return_stats:
             return results
         else:
             return results[:-1]  # Return without stats
-    
-    def _run_model_inference(self, patches, tensor):
-        """
-        Run model inference on image patches.
-        
-        Args:
-            patches: Array of image patches
-            tensor: Original tensor for dtype/device info
-            
-        Returns:
-            numpy array: Model predictions
-        """
-        from src.shared.torch_coordinator import ensure_torch_ready
-        ensure_torch_ready()
-        
-        import torch
-        
-        # Convert patches to tensor
-        patches_tensor = torch.tensor(patches, dtype=tensor.dtype, device=tensor.device)
-        
-        # Optimize model for inference
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.unet.to(device, memory_format=torch.channels_last).eval()
-                
-        # Prepare input tensor
-        patches_tensor = patches_tensor.to(device, memory_format=torch.channels_last)
-        
-        # Run inference with appropriate precision
-        with torch.inference_mode():
-            if device.type == "cuda":
-                with torch.autocast("cuda"):
-                    output = self.unet(patches_tensor)
-            else:
-                output = self.unet(patches_tensor)
-        
-        # Convert to numpy for post-processing
-        return output.cpu().detach().numpy()   
 
     def process_request_load_model(self, model_path):
+        from src.model.ImageSegmenter import ImageSegmenter
         self.model_ready_event.wait()
         self.unet.load_model(model_path)
+        self.segmenter = ImageSegmenter(self.unet)
         return None
     
     def process_request_test_model(self, test_data_image_dir, test_data_mask_dir, testing_callback = None, log_file_path = None):

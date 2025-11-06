@@ -84,7 +84,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                                  with_early_stopping=True,
                                                  with_data_augmentation=True)
         
-        self.model_window = None
+        self.train_model_window = None
         self.train_thread = None
         self.training_loss_values = []
         self.validation_loss_values = []
@@ -182,7 +182,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         matplotlib.use('Qt5Agg') 
         import matplotlib.pyplot as plt
         
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharex=True, sharey=True)
+        fig, axes = plt.subplots(1, 2, figsize=(12, 7), sharex=True, sharey=True)
         
         manager = plt.get_current_fig_manager()
 
@@ -198,8 +198,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             axes[1].set_title("Segmentation")
 
         manager.window.showMaximized()
-        plt.pause(0.1)
         plt.tight_layout()
+        plt.pause(0.1)
 
 
     def set_table_data(self, table_data):
