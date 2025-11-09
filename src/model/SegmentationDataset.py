@@ -4,6 +4,7 @@ from PIL import Image
 import numpy as np
 import cv2
 
+
 class RepeatDataset(Dataset):
     def __init__(self, dataset, repeat_factor):
         self.dataset = dataset
@@ -45,12 +46,14 @@ class SegmentationDataset(Dataset):
             raise ValueError("The number of images and masks must be the same.")
 
         import torchvision.transforms.functional as TF
+        from src.model.DataTools import tiff_force_8bit
 
         for index in range(len(self.image_filenames)):
             img_path = os.path.join(self.image_dir, self.image_filenames[index])
             mask_path = os.path.join(self.mask_dir, self.mask_filenames[index])
 
-            image = Image.open(img_path).convert("L")
+            image = Image.open(img_path)
+            image = tiff_force_8bit(image).convert("L")
             mask = Image.open(mask_path).convert("L")
             
             # Validate dimensions
