@@ -1,4 +1,5 @@
 import threading
+import os
 from src.model.SegmentationAnalyzer import SegmentationAnalyzer
 from src.model.PlottingTools import *
 
@@ -27,16 +28,12 @@ class RequestHandler:
         
         from src.model.CrossValidation import cv_holdout
         from src.model.UNet import UNet
-        from src.model.ImageSegmenter import ImageSegmenter
+
         self.model_ready_event.wait()
         self.unet = UNet()
-        self.segmenter = ImageSegmenter(self.unet)
-        import os
-        os.makedirs(log_dir, exist_ok=True)
-        log_file_path = os.path.join(log_dir, "training_evaluation.txt")
+        self.segmenter.unet = self.unet
         
-        evaluation_result = cv_holdout(self.unet, model_config, self.unet.preferred_input_size, stop_training_event, loss_callback, test_callback, log_file_path)
-        print(f"Model IOU: {evaluation_result.mean_iou}\nModel Dice Score: {evaluation_result.mean_dice}")
+        evaluation_result = cv_holdout(self.unet, model_config, stop_training_event, loss_callback, test_callback, log_dir)
         return evaluation_result
 
     def process_request_segment(self, image, output_folder, return_stats=False):
@@ -46,7 +43,7 @@ class RequestHandler:
         Args:
             image: The input image to segment
             output_folder: Folder to save the statistics
-            return_stats: Whether to include raw statistics in the return value
+            return_stats: Whether to include summary statistics in the return value
             
         Returns:
             Tuple containing:
@@ -71,10 +68,9 @@ class RequestHandler:
             return results[:-1]  # Return without stats
 
     def process_request_load_model(self, model_path):
-        from src.model.ImageSegmenter import ImageSegmenter
         self.model_ready_event.wait()
         self.unet.load_model(model_path)
-        self.segmenter = ImageSegmenter(self.unet)
+        self.segmenter.unet = self.unet
         return None
     
     def process_request_test_model(self, test_data_image_dir, test_data_mask_dir, testing_callback = None, log_file_path = None):

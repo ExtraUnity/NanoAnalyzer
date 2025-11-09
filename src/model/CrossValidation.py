@@ -5,35 +5,30 @@ import numpy as np
 from torch.utils.data import DataLoader, random_split
 from src.model.SegmentationDataset import SegmentationDataset
 from src.model.PlottingTools import *
-from src.model.DataTools import get_dataloaders, get_dataloaders_kfold_already_split, get_dataloaders_without_testset, process_and_slice, slice_dataset_in_four, get_normalizer
+from src.model.DataTools import get_dataloaders, get_dataloaders_kfold_already_split, process_and_slice, slice_dataset_in_four, get_normalizer
 from src.model.ModelEvaluator import ModelEvaluator
 from src.shared.ModelConfig import ModelConfig
 from src.shared.EvaluationResult import EvaluationResult
 
-def cv_holdout(unet, model_config: ModelConfig, input_size, stop_training_event = None, loss_callback = None, testing_callback = None, log_file_path = None) -> EvaluationResult:
-    # Set parameters:
-    train_subset_size = 0.6
-    validation_subset_size = 0.2
-    print(f"Training model using holdout [train_split_size={train_subset_size}, epochs={model_config.epochs}, learnRate={model_config.learning_rate}]...")
+def cv_holdout(unet, model_config: ModelConfig, stop_training_event = None, loss_callback = None, testing_callback = None, log_dir = None) -> EvaluationResult:
+    print(f"Training model using holdout [train_split_size={model_config.train_subset_size}, epochs={model_config.epochs}, learnRate={model_config.learning_rate}]...")
     print("---------------------------------------------------------------------------------------")
     dataset = SegmentationDataset(model_config.images_path, model_config.masks_path)
     train_dataloader, validation_dataloader, test_dataloader = None, None, None
 
-    if model_config.test_images_path and model_config.test_masks_path:
-        train_dataloader, validation_dataloader = get_dataloaders_without_testset(dataset, train_subset_size, unet.preferred_input_size, model_config.with_data_augmentation)
-        test_dataset = SegmentationDataset(model_config.test_images_path, model_config.test_masks_path)
-        test_dataloader = DataLoader(test_dataset, batch_size=1)
-    else:
-        train_dataloader, validation_dataloader, test_dataloader = get_dataloaders(dataset, train_subset_size, validation_subset_size, unet.preferred_input_size, model_config.with_data_augmentation, log_file_path)
-    normalizer = get_normalizer(train_dataloader.dataset.dataset)
-    unet.normalizer = normalizer
+    log_file_path = None
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+        log_file_path = os.path.join(log_dir, "training_evaluation.txt")
+
+    train_dataloader, validation_dataloader, test_dataloader = get_dataloaders(dataset, model_config, unet.preferred_input_size, log_file_path)
+    unet.normalizer = get_normalizer(train_dataloader.dataset.dataset)
     unet.train_model(
         training_dataloader=train_dataloader, 
         validation_dataloader=validation_dataloader, 
         epochs=model_config.epochs, 
         learningRate=model_config.learning_rate, 
         model_name="UNet_" + datetime.datetime.now().strftime('%d.%m.%Y_%H-%M-%S')+".pt",
-        cross_validation="holdout",
         with_early_stopping=model_config.with_early_stopping,
         loss_function="combined",
         scheduler_type=getattr(model_config, 'scheduler_type', 'none'),  # Default to none if not specified
@@ -121,7 +116,6 @@ def inner_fold(idx, K2, par_split, parameters, epochs, train_idx, test_idx, test
             epochs=epochs,
             learningRate=learning_rate,
             model_name=model_name,
-            cross_validation="kfold",
             with_early_stopping=True,
             loss_function=loss_function,
             scheduler_type=scheduler  # Add scheduler type

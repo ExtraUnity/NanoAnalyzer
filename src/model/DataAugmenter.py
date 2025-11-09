@@ -1,8 +1,4 @@
-from torch import Tensor
-import numpy as np
 from torch.utils.data import Dataset
-import random
-
 from src.model.SegmentationDataset import RepeatDataset, SegmentationDataset
 class DataAugmenter():
     def __init__(self):
@@ -65,7 +61,7 @@ class DataAugmenter():
         return transformer
 
     
-    def augment_dataset(self, dataset: Dataset, input_size: tuple[int, int], augmentations=[True,True,False,False,True,True,False]) -> Dataset:
+    def augment_dataset(self, dataset: Dataset, augmentations=[True,True,False,False,True,True,False]) -> Dataset:
         new_images = []
         new_masks = []
         new_filenames = []

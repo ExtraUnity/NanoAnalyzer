@@ -94,6 +94,7 @@ class UNet(nn.Module):
         d4 = self.decoder4(d3, e1)
 
         m = self.mappingConvolution(d4)
+        #self._visualize_feature_map(m, "HiSpec_2000_285k", True)
         return m
     
     def _configure_scheduler(self, scheduler_type="plateau"):
@@ -170,7 +171,7 @@ class UNet(nn.Module):
         
         return BoundaryDiceLoss()
     
-    def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader, epochs: int, learningRate: float, model_name: str, cross_validation: str, with_early_stopping: bool, loss_function: str, scheduler_type: str = "plateau", stop_training_event: Event = None, loss_callback = None):
+    def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader, epochs: int, learningRate: float, model_name: str, with_early_stopping: bool, loss_function: str, scheduler_type: str = "plateau", stop_training_event: Event = None, loss_callback = None):
         self.to(self.device)
 
         self.optimizer = torch.optim.Adam(self.parameters(), learningRate, weight_decay=1e-4)

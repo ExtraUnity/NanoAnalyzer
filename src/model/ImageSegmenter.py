@@ -1,15 +1,9 @@
-"""
-ImageSegmenter class handles the image segmentation pipeline.
-"""
-
 import torch
 from src.model.DataTools import ImagePreprocessor
-from src.model.SegmentationAnalyzer import SegmentationAnalyzer
-
 
 class ImageSegmenter:
     """
-    Handles the segmentation of images using a trained U-Net model.
+    Handles the segmentation of single images using a trained U-Net model.
     """
     
     def __init__(self, unet_model):
