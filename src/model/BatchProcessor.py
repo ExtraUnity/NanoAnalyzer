@@ -1,7 +1,4 @@
 import os
-import os
-from PIL import Image
-from src.shared.FileInfo import FileInfo
 from src.model.StatsWriter import StatsWriter
 from src.shared.ParticleImage import ParticleImage
 
@@ -25,18 +22,19 @@ class BatchProcessor:
         """
         all_stats = []
         all_file_info = []
+        images = []
+        file_paths = []
         # First validate all images have proper units
         for filename in os.listdir(input_folder):
             file_path = os.path.join(input_folder, filename)
             image = ParticleImage.load_and_preprocess(file_path)
             if image.file_info.unit.lower() == "pixel":
                 raise ValueError(f"Image '{filename}' has no readable physical unit (unit is 'pixel'). Cannot process folder when physical units are missing.")
-        
+            images.append(image)
+            file_paths.append(file_path)
+
         # Process each image in the input folder
-        for filename in os.listdir(input_folder):
-            file_path = os.path.join(input_folder, filename)
-            image = ParticleImage.load_and_preprocess(file_path)
-            
+        for image, file_path in zip(images, file_paths):            
             # Create output folder for this image
             output_folder = os.path.join(output_parent_folder, image.file_info.file_name)
             os.makedirs(output_folder, exist_ok=True)
