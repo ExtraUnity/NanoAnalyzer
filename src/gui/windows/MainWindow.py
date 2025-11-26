@@ -297,9 +297,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return QPixmap.fromImage(qimage) 
 
 
-    def show_testing_difference_mainwindow(self, prediction, label, iou, dice_score):
+    def show_testing_difference_mainwindow(self, input, prediction, label, iou, dice_score):
         from src.model.PlottingTools import plot_difference
-        plot_difference(prediction, label, iou, dice_score)
+        plot_difference(input, prediction, label, iou, dice_score)
 
     def show_metrics_popup(self, evaluation_result: EvaluationResult):
         self.set_ui_busy(False)

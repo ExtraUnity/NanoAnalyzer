@@ -89,53 +89,80 @@ def plot_paired_histogram(iou_A, iou_B, dice_A, dice_B):
     plt.show()
 
 def plot_iou_dice_boxplot(iou_A, iou_B, dice_A, dice_B):
-    import pandas as pd
     A_label = "No augmentation"
     B_label = "Horizontal flip"
-    # Prepare DataFrame
+
+    # Data for seaborn (it accepts dicts just like DataFrames)
     data = {
         'Score': np.concatenate([iou_A, iou_B, dice_A, dice_B]),
-        'Metric': ['IoU'] * 10 + ['Dice'] * 10,
-        'Model': [A_label] * 5 + [B_label] * 5 + [A_label] * 5 + [B_label] * 5
+        'Metric': (['IoU'] * len(iou_A) + ['IoU'] * len(iou_B) +
+                   ['Dice'] * len(dice_A) + ['Dice'] * len(dice_B)),
+        'Model': ([A_label] * len(iou_A) + [B_label] * len(iou_B) +
+                  [A_label] * len(dice_A) + [B_label] * len(dice_B)),
     }
-    df = pd.DataFrame(data)
 
-    # Style
+    # Helper structure to replace df[(df[...] == ...)]
+    grouped_scores = {
+        ('IoU', A_label): iou_A,
+        ('IoU', B_label): iou_B,
+        ('Dice', A_label): dice_A,
+        ('Dice', B_label): dice_B,
+    }
+
     sns.set_theme(style='whitegrid')
     palette = {A_label: '#1f77b4', B_label: '#ff7f0e'}
 
-    # Create plot
     plt.figure(figsize=(10, 6))
-    ax = sns.boxplot(x='Metric', y='Score', hue='Model', data=df, palette=palette, width=0.6, linewidth=1.5, whis=[0,100], showfliers=False)
-    
-    # Calculate and annotate means
+    ax = sns.boxplot(
+        x='Metric',
+        y='Score',
+        hue='Model',
+        data=data,
+        palette=palette,
+        width=0.6,
+        linewidth=1.5,
+        whis=[0, 100],
+        showfliers=False
+    )
+
     means = {
         ('IoU', A_label): np.mean(iou_A),
         ('IoU', B_label): np.mean(iou_B),
         ('Dice', A_label): np.mean(dice_A),
         ('Dice', B_label): np.mean(dice_B),
     }
-    x_offsets = {('IoU', A_label): -0.15, ('IoU', B_label): 0.15,
-                 ('Dice', A_label): 0.85, ('Dice', B_label): 1.15}
 
-    for (metric, model), mean in means.items():
-        x = x_offsets[(metric, model)]
-        
-        # Find maximum y for this group to place the mean above it
-        scores = df[(df['Metric'] == metric) & (df['Model'] == model)]['Score']
-        y_max = scores.max()
-        
+    x_offsets = {
+        ('IoU', A_label): -0.15,
+        ('IoU', B_label): 0.15,
+        ('Dice', A_label): 0.85,
+        ('Dice', B_label): 1.15,
+    }
+
+    for key, mean in means.items():
+        metric, model = key
+        x = x_offsets[key]
+
+        # Replace df[...] filtering:
+        y_max = np.max(grouped_scores[key])
+
         ax.text(
-            x, y_max + 0.01,  # place above the max value
+            x,
+            y_max + 0.01,
             f"Mean = {mean:.3f}",
             ha='center',
             fontsize=10,
             color='dimgray',
-            bbox=dict(facecolor='white', alpha=0.8, edgecolor='grey', boxstyle='round,pad=0.3')
+            bbox=dict(
+                facecolor='white',
+                alpha=0.8,
+                edgecolor='grey',
+                boxstyle='round,pad=0.3'
+            )
         )
 
-    # Polish
-    ax.set_title(f'Comparison of IoU and Dice Scores\n {A_label} vs. {B_label}', fontsize=14, weight='bold')
+    ax.set_title(f'Comparison of IoU and Dice Scores\n {A_label} vs. {B_label}',
+                 fontsize=14, weight='bold')
     ax.set_ylabel('Score', fontsize=12)
     ax.set_xlabel('Metric', fontsize=12)
     ax.tick_params(labelsize=11)
@@ -145,24 +172,45 @@ def plot_iou_dice_boxplot(iou_A, iou_B, dice_A, dice_B):
 
 
 def plot_iou_dice_boxplot3(iou_A, iou_B, iou_C, dice_A, dice_B, dice_C):
-    import pandas as pd
     A_label = "No augmentation"
     B_label = "Horizontal flip"
     C_label = "Horizontal flip + rotation"
-    # Prepare DataFrame
+
+    # Data for seaborn
     data = {
         'Score': np.concatenate([iou_A, iou_B, iou_C, dice_A, dice_B, dice_C]),
-        'Metric': ['IoU'] * 15 + ['Dice'] * 15,
-        'Model': [A_label] * 5 + [B_label] * 5 + [C_label] * 5 + [A_label] * 5 + [B_label] * 5 + [C_label] * 5
+        'Metric': (['IoU'] * len(iou_A) + ['IoU'] * len(iou_B) + ['IoU'] * len(iou_C) +
+                   ['Dice'] * len(dice_A) + ['Dice'] * len(dice_B) + ['Dice'] * len(dice_C)),
+        'Model': ([A_label] * len(iou_A) + [B_label] * len(iou_B) + [C_label] * len(iou_C) +
+                  [A_label] * len(dice_A) + [B_label] * len(dice_B) + [C_label] * len(dice_C)),
     }
-    df = pd.DataFrame(data)
-    # Style
+
+    # Replace DataFrame filtering with direct dict lookups
+    grouped_scores = {
+        ('IoU', A_label): iou_A,
+        ('IoU', B_label): iou_B,
+        ('IoU', C_label): iou_C,
+        ('Dice', A_label): dice_A,
+        ('Dice', B_label): dice_B,
+        ('Dice', C_label): dice_C,
+    }
+
     sns.set_theme(style='whitegrid')
     palette = {A_label: '#1f77b4', B_label: '#ff7f0e', C_label: '#2ca02c'}
-    # Create plot
+
     plt.figure(figsize=(10, 7))
-    ax = sns.boxplot(x='Metric', y='Score', hue='Model', data=df, palette=palette, width=0.6, linewidth=1.5, whis=[0,100], showfliers=False)
-    # Calculate and annotate means
+    ax = sns.boxplot(
+        x='Metric',
+        y='Score',
+        hue='Model',
+        data=data,
+        palette=palette,
+        width=0.6,
+        linewidth=1.5,
+        whis=[0, 100],
+        showfliers=False
+    )
+
     means = {
         ('IoU', A_label): np.mean(iou_A),
         ('IoU', B_label): np.mean(iou_B),
@@ -171,25 +219,40 @@ def plot_iou_dice_boxplot3(iou_A, iou_B, iou_C, dice_A, dice_B, dice_C):
         ('Dice', B_label): np.mean(dice_B),
         ('Dice', C_label): np.mean(dice_C),
     }
-    x_offsets = {('IoU', A_label): -0.2, ('IoU', B_label): 0, ('IoU', C_label): 0.2,
-                    ('Dice', A_label): 0.8, ('Dice', B_label): 1, ('Dice', C_label): 1.2}
-    for (metric, model), mean in means.items():
-        x = x_offsets[(metric, model)]
-        
-        # Find maximum y for this group to place the mean above it
-        scores = df[(df['Metric'] == metric) & (df['Model'] == model)]['Score']
-        y_max = scores.max()
-        
+
+    x_offsets = {
+        ('IoU', A_label): -0.2,
+        ('IoU', B_label): 0.0,
+        ('IoU', C_label): 0.2,
+        ('Dice', A_label): 0.8,
+        ('Dice', B_label): 1.0,
+        ('Dice', C_label): 1.2,
+    }
+
+    for key, mean in means.items():
+        metric, model = key
+        x = x_offsets[key]
+
+        # Replace df[...] with list lookups:
+        y_max = np.max(grouped_scores[key])
+
         ax.text(
-            x, y_max + 0.005,  # place above the max value
+            x,
+            y_max + 0.005,
             f"Mean = {mean:.3f}",
             ha='center',
             fontsize=10,
             color='dimgray',
-            bbox=dict(facecolor='white', alpha=0.8, edgecolor='grey', boxstyle='round,pad=0.3')
+            bbox=dict(
+                facecolor='white',
+                alpha=0.8,
+                edgecolor='grey',
+                boxstyle='round,pad=0.3'
+            )
         )
-    # Polish
-    ax.set_title(f'Comparison of IoU and Dice Scores\n {A_label} vs. {B_label} vs. {C_label}', fontsize=14, weight='bold')
+
+    ax.set_title(f'Comparison of IoU and Dice Scores\n {A_label} vs. {B_label} vs. {C_label}',
+                 fontsize=14, weight='bold')
     ax.set_ylabel('Score', fontsize=12)
     ax.set_xlabel('Metric', fontsize=12)
     ax.tick_params(labelsize=11)
@@ -530,7 +593,6 @@ if __name__ == "__main__":
     # image2, mask2 = random_affine(image, mask)
     # show_example_images([image, mask, image2, mask2])
     # show_annotation(image, mask)
-    # import pandas as pd
     from scipy import stats
     grid_crop = np.array([0.6528146886825562, 0.6797138452529907, 0.7251459360122681, 0.6453444671630859, 0.7232711219787598])
     grid_crop_dice = np.array([0.7642716979980469, 0.7461620569229126, 0.7954027056694031, 0.7549303579330444, 0.8166839981079102])
