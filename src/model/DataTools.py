@@ -78,6 +78,25 @@ def slice_dataset_in_four(dataset, input_size=(256, 256)):
         filenames.extend(filename_slices)
     return SegmentationDataset.from_image_set(images, masks, filenames)
 
+def process_no_slice(data_subset):
+    images = []
+    masks = []
+    filenames = []
+    
+    for (img, mask), idx in zip(data_subset, data_subset.indices):
+        img = img.unsqueeze(0) if img.dim() == 3 else img
+        mask = mask.unsqueeze(0) if mask.dim() == 3 else mask
+
+        images.append(img)
+        masks.append(mask)
+        
+        # Get the base filename for this image
+        base_filename = data_subset.dataset.image_filenames[idx]
+        filenames.append(base_filename)
+
+    # Create list of (image, mask) tensors
+    return SegmentationDataset.from_image_set(images, masks, filenames)
+
 # Helper to process val/test with mirror_fill and extract_slices
 def process_and_slice(data_subset, input_size=(256, 256)):
     images = []
@@ -198,7 +217,7 @@ def get_data_splits(dataset, model_config, input_size, log_file_path=None):
     else:
         train_data = data_augmenter.augment_dataset(train_data, [False, False, False, False, False, False, False])
     val_data = process_and_slice(val_data, input_size)
-    #test_data = process_and_slice(test_data, input_size)
+    test_data = process_no_slice(test_data)
     return train_data, val_data, test_data
 
 

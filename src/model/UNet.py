@@ -64,6 +64,7 @@ class UNet(nn.Module):
 
         self.optimizer = None
         self.criterion = None
+        self.scheduler = None
         
         self.device = device("cuda" if cuda.is_available() else "cpu")
         print(f"Using {self.device}")
@@ -96,6 +97,16 @@ class UNet(nn.Module):
         m = self.mappingConvolution(d4)
         #self._visualize_feature_map(m, "HiSpec_2000_285k", True)
         return m
+    
+    def _encoder_modules(self):
+        return [self.encoder1, self.encoder2, self.encoder3, self.encoder4, self.bottleneck]
+    
+    def _toggle_encoder_trainable(self, trainable: bool):
+        """Freeze/unfreeze encoder side without touching decoder layers."""
+        for module in self._encoder_modules():
+            module.train(mode=trainable)
+            for param in module.parameters():
+                param.requires_grad = trainable
     
     def _configure_scheduler(self, scheduler_type="plateau"):
         """Configure learning rate scheduler based on type"""
@@ -140,6 +151,10 @@ class UNet(nn.Module):
     def get_current_lr(self):
         """Get current learning rate"""
         return self.optimizer.param_groups[0]['lr']
+
+    def _build_optimizer(self, learning_rate: float, trainable_params=None):
+        params = trainable_params if trainable_params is not None else self.parameters()
+        return torch.optim.Adam(params, learning_rate, weight_decay=1e-4)
     
     def _create_focal_dice_loss(self):
         """Create custom Focal + Dice combination loss"""
@@ -170,60 +185,56 @@ class UNet(nn.Module):
                 return 0.5 * boundary_loss + 0.5 * dice_loss
         
         return BoundaryDiceLoss()
-    
-    def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader, epochs: int, learningRate: float, model_name: str, with_early_stopping: bool, loss_function: str, scheduler_type: str = "plateau", stop_training_event: Event = None, loss_callback = None):
-        self.to(self.device)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), learningRate, weight_decay=1e-4)
-        
-        # Configure learning rate scheduler
-        self.scheduler = self._configure_scheduler(scheduler_type=scheduler_type)
-        
-        if self.device.type == 'cuda':
-            scaler = GradScaler("cuda")
-
+    def _select_loss_function(self, loss_function: str):
         if loss_function == "dice":
-            self.criterion = DiceLoss()
-        elif loss_function == "dice2":
-            self.criterion = ForegroundDiceLoss()
-        elif loss_function == "weighted_dice":
-            self.criterion = WeightedDiceLoss(class_weights=[1.0, 2.0])
-        elif loss_function == "weighted_cross_entropy":
-            self.criterion = nn.CrossEntropyLoss(weight=Tensor([1.0, 2.0], device=self.device))
-        elif loss_function == "cross_entropy":
-            self.criterion = nn.CrossEntropyLoss()
-        
-        # NEW LOSS FUNCTIONS
-        elif loss_function == "focal":
-            self.criterion = FocalLoss(alpha=0.25, gamma=2.0)
-        elif loss_function == "focal_strong":
-            self.criterion = FocalLoss(alpha=0.25, gamma=3.0)  # Stronger focus on hard examples
-        elif loss_function == "combined":
-            self.criterion = CombinedLoss(ce_weight=0.5, dice_weight=0.5)
-        elif loss_function == "combined_dice_heavy":
-            self.criterion = CombinedLoss(ce_weight=0.3, dice_weight=0.7)  # More emphasis on Dice
-        elif loss_function == "tversky":
-            self.criterion = TverskyLoss(alpha=0.3, beta=0.7)  # Penalize false negatives more
-        elif loss_function == "tversky_balanced":
-            self.criterion = TverskyLoss(alpha=0.5, beta=0.5)  # Balanced
-        elif loss_function == "boundary":
-            self.criterion = BoundaryLoss(boundary_weight=5.0)
-        elif loss_function == "size_penalty":
-            self.criterion = SizePenaltyLoss(expected_size_range=(50, 500), penalty_weight=0.1)
-        
-        # COMBINATION APPROACHES
-        elif loss_function == "focal_dice":
+            return DiceLoss()
+        if loss_function == "dice2":
+            return ForegroundDiceLoss()
+        if loss_function == "weighted_dice":
+            return WeightedDiceLoss(class_weights=[1.0, 2.0])
+        if loss_function == "weighted_cross_entropy":
+            return nn.CrossEntropyLoss(weight=Tensor([1.0, 2.0], device=self.device))
+        if loss_function == "cross_entropy":
+            return nn.CrossEntropyLoss()
+        if loss_function == "focal":
+            return FocalLoss(alpha=0.25, gamma=2.0)
+        if loss_function == "focal_strong":
+            return FocalLoss(alpha=0.25, gamma=3.0)  # Stronger focus on hard examples
+        if loss_function == "combined":
+            return CombinedLoss(ce_weight=0.5, dice_weight=0.5)
+        if loss_function == "combined_dice_heavy":
+            return CombinedLoss(ce_weight=0.3, dice_weight=0.7)  # More emphasis on Dice
+        if loss_function == "tversky":
+            return TverskyLoss(alpha=0.3, beta=0.7)  # Penalize false negatives more
+        if loss_function == "tversky_balanced":
+            return TverskyLoss(alpha=0.5, beta=0.5)  # Balanced
+        if loss_function == "boundary":
+            return BoundaryLoss(boundary_weight=5.0)
+        if loss_function == "size_penalty":
+            return SizePenaltyLoss(expected_size_range=(50, 500), penalty_weight=0.1)
+        if loss_function == "focal_dice":
             # Custom combination of Focal + Dice
-            self.criterion = self._create_focal_dice_loss()
-        elif loss_function == "boundary_dice":
+            return self._create_focal_dice_loss()
+        if loss_function == "boundary_dice":
             # Custom combination of Boundary + Dice  
-            self.criterion = self._create_boundary_dice_loss()
-        
+            return self._create_boundary_dice_loss()
+        raise ValueError(
+            f"Unknown loss function: {loss_function}. Available options: "
+            f"'dice', 'dice2', 'weighted_dice', 'cross_entropy', 'weighted_cross_entropy', "
+            f"'focal', 'focal_strong', 'combined', 'combined_dice_heavy', 'tversky', "
+            f"'tversky_balanced', 'boundary', 'size_penalty', 'focal_dice', 'boundary_dice'"
+        )
+
+    def _run_training_loop(self, training_dataloader: DataLoader, validation_dataloader: DataLoader, epochs: int,
+                           model_name: str, with_early_stopping: bool, stop_training_event: Event = None,
+                           loss_callback=None, on_epoch_start=None):
+        self.to(self.device)
+        use_cuda = self.device.type == 'cuda'
+        if use_cuda:
+            scaler = GradScaler("cuda")
         else:
-            raise ValueError(f"Unknown loss function: {loss_function}. Available options: "
-                           f"'dice', 'dice2', 'weighted_dice', 'cross_entropy', 'weighted_cross_entropy', "
-                           f"'focal', 'focal_strong', 'combined', 'combined_dice_heavy', 'tversky', "
-                           f"'tversky_balanced', 'boundary', 'size_penalty', 'focal_dice', 'boundary_dice'")
+            scaler = None
 
         training_loss_values = []
         validation_loss_values = []
@@ -236,6 +247,8 @@ class UNet(nn.Module):
         for epoch in range(epochs):
             start_time = time.perf_counter()
             self.train()
+            if on_epoch_start:
+                on_epoch_start()
             running_loss = 0.0
             
             for i, data in enumerate(training_dataloader):
@@ -258,7 +271,7 @@ class UNet(nn.Module):
                     outputs = self(inputs)
                     loss = self.criterion(outputs, labels)
                 
-                if self.device.type == 'cuda':
+                if use_cuda:
                     scaler.scale(loss).backward()
                     # Add gradient clipping
                     scaler.unscale_(self.optimizer)
@@ -314,6 +327,34 @@ class UNet(nn.Module):
         print('Finished Training')
         self.load_model("data/models/" + model_name)
         return training_loss_values, validation_loss_values
+
+
+    def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader, epochs: int, learningRate: float, model_name: str, with_early_stopping: bool, loss_function: str, scheduler_type: str = "plateau", stop_training_event: Event = None, loss_callback = None):
+        self.optimizer = self._build_optimizer(learningRate)
+        
+        # Configure learning rate scheduler
+        self.scheduler = self._configure_scheduler(scheduler_type=scheduler_type)
+        
+        self.criterion = self._select_loss_function(loss_function)
+
+        return self._run_training_loop(training_dataloader, validation_dataloader, epochs, model_name, with_early_stopping, stop_training_event, loss_callback)
+
+    def fine_tune_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader, epochs: int, learningRate: float, model_name: str, with_early_stopping: bool, loss_function: str, scheduler_type: str = "plateau", stop_training_event: Event = None, loss_callback = None):
+        # Freeze encoder parameters so only decoder/mapping layers are updated
+        self._toggle_encoder_trainable(False)
+        trainable_params = [param for param in self.parameters() if param.requires_grad]
+        if not trainable_params:
+            raise ValueError("No trainable parameters available for fine-tuning")
+
+        self.optimizer = self._build_optimizer(learningRate, trainable_params)
+        self.scheduler = self._configure_scheduler(scheduler_type=scheduler_type)
+        self.criterion = self._select_loss_function(loss_function)
+
+        try:
+            return self._run_training_loop(training_dataloader, validation_dataloader, epochs, model_name, with_early_stopping, stop_training_event, loss_callback, on_epoch_start=lambda: self._toggle_encoder_trainable(False))
+        finally:
+            # Restore encoder to default trainable state for future full retraining if needed
+            self._toggle_encoder_trainable(True)
 
 
     def get_validation_loss(self, validation_dataloader: DataLoader) -> float:

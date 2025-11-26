@@ -8,6 +8,7 @@ class Controller():
         self.commands = {
             Command.SEGMENT: self.request_handler.process_request_segment,
             Command.RETRAIN: self.request_handler.process_request_train,
+            Command.FINE_TUNE: self.request_handler.process_request_fine_tune,
             Command.LOAD_MODEL: self.request_handler.process_request_load_model,
             Command.TEST_MODEL: self.request_handler.process_request_test_model,
             Command.SEGMENT_FOLDER: self.request_handler.process_request_segment_folder,

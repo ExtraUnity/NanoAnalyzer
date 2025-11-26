@@ -11,9 +11,10 @@ class TrainModelWindow(QMainWindow, Ui_TrainModel):
     train_model_signal = QtCore.pyqtSignal(ModelConfig, str, Event)
     training_finished_signal = QtCore.pyqtSignal()
 
-    def __init__(self, update_data_signal, show_testing_difference_signal):
+    def __init__(self, update_data_signal, show_testing_difference_signal, mode: str = "train"):
         super().__init__()
         self.setupUi(self)
+        self.mode = mode
 
         self.training_images_directory = None
         self.training_labels_directory = None
@@ -26,6 +27,7 @@ class TrainModelWindow(QMainWindow, Ui_TrainModel):
         update_data_signal.connect(self.update_loss_values)
         show_testing_difference_signal.connect(self.show_testing_difference)
         self.training_finished_signal.connect(self.on_training_finished)
+        self._configure_mode_labels()
         
         self.training_images_button.clicked.connect(self.select_training_images_clicked)
         self.training_labels_button.clicked.connect(self.select_training_labels_clicked)
@@ -37,6 +39,16 @@ class TrainModelWindow(QMainWindow, Ui_TrainModel):
         self.auto_test_set_checkbox.stateChanged.connect(self.auto_test_set_checkbox_clicked)
         self.stop_training_event = Event()
         
+
+    def _configure_mode_labels(self):
+        if self.mode == "fine_tune":
+            self.title.setText("Fine tune model")
+            self.train_model_button.setText("Fine tune")
+            self.setWindowTitle("Fine tune model")
+        else:
+            self.title.setText("Train new model")
+            self.train_model_button.setText("Train model")
+            self.setWindowTitle("Train new model")
 
 
     def open_directory(self, window_text):

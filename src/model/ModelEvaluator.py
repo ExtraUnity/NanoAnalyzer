@@ -113,12 +113,14 @@ class ModelEvaluator():
         labels = [label.cpu() for label in labels]
         ious = ModelEvaluator.calculate_ious(predictions, labels)
         dice_scores = ModelEvaluator.calculate_dice_scores(predictions, labels)
-        file_names = test_dataloader.dataset.image_filenames
-
+        if hasattr(test_dataloader.dataset, 'image_filenames'):
+            file_names = test_dataloader.dataset.image_filenames
+        else:
+            print("Warning: Dataset has no attribute 'image_filenames'. Using generic names for logging.")
+            file_names = [f"Image_{i}" for i in range(len(ious))]
         # Log individual results to file if path is provided
         if log_file_path:
             ModelEvaluator._log_individual_results(file_names, ious, dice_scores, log_file_path)
-        
         print(f"IOUS: {ious}")
         print(f"Dice scores: {dice_scores}")
 
@@ -128,7 +130,16 @@ class ModelEvaluator():
             return EvaluationResult(ious, dice_scores)
         try:
             for i in indicies:
-                test_callback(inputs[i], predictions[i], labels[i], ious[i], dice_scores[i])
+                callback_args = (inputs[i], predictions[i], labels[i], ious[i], dice_scores[i])
+                try:
+                    # Preferred signature: (input, prediction, label, iou, dice_score)
+                    test_callback(*callback_args)
+                except TypeError as e:
+                    # Some callbacks only expect (prediction, label, iou, dice_score)
+                    if "positional arguments" in str(e) or "expected 4" in str(e):
+                        test_callback(*callback_args[1:])
+                    else:
+                        raise
         except Exception as e:
             print(f"Error in test callback: {e}")
         finally:

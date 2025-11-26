@@ -4,9 +4,9 @@ from PyQt5.QtWidgets import QVBoxLayout
 from PyQt5.QtWidgets import (
     QFileDialog, QMainWindow, QMessageBox, QApplication, 
     QGraphicsScene, QGraphicsPixmapItem, QVBoxLayout,
-    QDialog, QLabel
+    QDialog, QLabel, QAction, QToolBar
 )
-from PIL import ImageQt
+#from PIL import ImageQt
 from PyQt5.QtCore import QDir
 import os
 import csv
@@ -85,9 +85,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                                  with_data_augmentation=True)
         
         self.train_model_window = None
+        self.fine_tune_window = None
         self.train_thread = None
         self.training_loss_values = []
         self.validation_loss_values = []
+        self._setup_model_toolbar()
 
         self.plot_segmentation_scene = QGraphicsScene(self)
         self.plot_segmentation.setScene(self.plot_segmentation_scene)
@@ -117,6 +119,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # Connect signals to handlers
         self.segmentation_finished.connect(self._on_segmentation_finished)
         self.segmentation_failed.connect(self._on_segmentation_failed)
+
+    def _setup_model_toolbar(self):
+        self.model_toolbar = QToolBar("Model", self.MainWindow)
+        self.model_toolbar.setObjectName("model_toolbar")
+        self.MainWindow.addToolBar(self.model_toolbar)
+        self.model_toolbar.addAction(self.action_new_data_train_model)
+
+        self.action_fine_tune_model = QAction("Fine tune model", self.MainWindow)
+        self.action_fine_tune_model.setObjectName("action_fine_tune_model")
+        self.model_toolbar.addAction(self.action_fine_tune_model)
+        self.menu_model.addAction(self.action_fine_tune_model)
+        self.action_fine_tune_model.triggered.connect(self.on_fine_tune_model_clicked)
 
 
     def handle_error(self, message, handler=None):
@@ -224,11 +238,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.train_model_window.train_model_signal.connect(self.train_model_custom_data)
         self.train_model_window.show()
 
+    def on_fine_tune_model_clicked(self):
+        self.fine_tune_window = TrainModelWindow(self.update_train_model_values_signal, self.show_testing_difference_signal, mode="fine_tune")
+        self.fine_tune_window.train_model_signal.connect(self.fine_tune_model_custom_data)
+        self.fine_tune_window.show()
+
 
     def train_model_custom_data(self, model_config: ModelConfig, log_dir: str, stop_training_event: Event):
         result = confirmTrainingMessageBox(self, "Training a new model may take a while, do you want to continue?")
         if result == QMessageBox.No:
-                return
+            return
 
         self._start_segmentation_thread(Command.RETRAIN, self.show_metrics_popup, 
                 model_config,
@@ -237,6 +256,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.update_training_model_stats,
                 self.show_testing_difference,
                 on_error=lambda: self.train_model_window.training_finished_signal.emit())
+        self._seg_thread.start()  
+
+    def fine_tune_model_custom_data(self, model_config: ModelConfig, log_dir: str, stop_training_event: Event):
+        result = confirmTrainingMessageBox(self, "Fine tuning will update the currently loaded model. Continue?")
+        if result == QMessageBox.No:
+            return
+
+        self._start_segmentation_thread(Command.FINE_TUNE, self.show_metrics_popup, 
+                model_config,
+                log_dir,
+                stop_training_event,
+                self.update_training_model_stats,
+                self.show_testing_difference,
+                on_error=lambda: self.fine_tune_window.training_finished_signal.emit())
         self._seg_thread.start()  
 
 
@@ -305,6 +338,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.set_ui_busy(False)
         if self.train_model_window is not None:
             self.train_model_window.training_finished_signal.emit()
+        if self.fine_tune_window is not None:
+            self.fine_tune_window.training_finished_signal.emit()
             
         if evaluation_result is None:
             return
@@ -452,6 +487,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.action_open_image,
             self.action_load_model,
             self.action_new_data_train_model,
+            self.action_fine_tune_model,
             self.action_test_model,
             self.actionExport_Segmentation_2,
             self.actionExport_Data_as_csv,

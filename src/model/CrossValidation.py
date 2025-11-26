@@ -10,8 +10,9 @@ from src.model.ModelEvaluator import ModelEvaluator
 from src.shared.ModelConfig import ModelConfig
 from src.shared.EvaluationResult import EvaluationResult
 
-def cv_holdout(unet, model_config: ModelConfig, stop_training_event = None, loss_callback = None, testing_callback = None, log_dir = None) -> EvaluationResult:
-    print(f"Training model using holdout [train_split_size={model_config.train_subset_size}, epochs={model_config.epochs}, learnRate={model_config.learning_rate}]...")
+def cv_holdout(unet, model_config: ModelConfig, stop_training_event = None, loss_callback = None, testing_callback = None, log_dir = None, fine_tune: bool = False) -> EvaluationResult:
+    mode = "Fine-tuning" if fine_tune else "Training"
+    print(f"{mode} model using holdout [train_split_size={model_config.train_subset_size}, epochs={model_config.epochs}, learnRate={model_config.learning_rate}]...")
     print("---------------------------------------------------------------------------------------")
     dataset = SegmentationDataset(model_config.images_path, model_config.masks_path)
     train_dataloader, validation_dataloader, test_dataloader = None, None, None
@@ -23,12 +24,14 @@ def cv_holdout(unet, model_config: ModelConfig, stop_training_event = None, loss
 
     train_dataloader, validation_dataloader, test_dataloader = get_dataloaders(dataset, model_config, unet.preferred_input_size, log_file_path)
     unet.normalizer = get_normalizer(train_dataloader.dataset.dataset)
-    unet.train_model(
+    model_name_prefix = "UNet_finetuned_" if fine_tune else "UNet_"
+    training_fn = unet.fine_tune_model if fine_tune else unet.train_model
+    training_fn(
         training_dataloader=train_dataloader, 
         validation_dataloader=validation_dataloader, 
         epochs=model_config.epochs, 
         learningRate=model_config.learning_rate, 
-        model_name="UNet_" + datetime.datetime.now().strftime('%d.%m.%Y_%H-%M-%S')+".pt",
+        model_name=model_name_prefix + datetime.datetime.now().strftime('%d.%m.%Y_%H-%M-%S')+".pt",
         with_early_stopping=model_config.with_early_stopping,
         loss_function="combined",
         scheduler_type=getattr(model_config, 'scheduler_type', 'none'),  # Default to none if not specified

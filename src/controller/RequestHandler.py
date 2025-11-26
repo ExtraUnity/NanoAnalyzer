@@ -36,6 +36,19 @@ class RequestHandler:
         evaluation_result = cv_holdout(self.unet, model_config, stop_training_event, loss_callback, test_callback, log_dir)
         return evaluation_result
 
+    def process_request_fine_tune(self, model_config, log_dir, stop_training_event = None, loss_callback = None, test_callback = None):
+        from src.shared.torch_coordinator import ensure_torch_ready
+        ensure_torch_ready()
+        from src.model.CrossValidation import cv_holdout
+
+        self.model_ready_event.wait()
+        # Keep the currently loaded model and only update its decoder weights
+        evaluation_result = cv_holdout(self.unet, model_config, stop_training_event, loss_callback, test_callback, log_dir, fine_tune=True)
+        # Ensure the segmenter keeps pointing to the updated network
+        if self.segmenter is not None:
+            self.segmenter.unet = self.unet
+        return evaluation_result
+
     def process_request_segment(self, image, output_folder, return_stats=False):
         """
         Process an image through the segmentation pipeline.

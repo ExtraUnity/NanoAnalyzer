@@ -121,7 +121,7 @@ class DataAugmenter():
         return updated
 
     @staticmethod
-    def corrupt_masks(dataset: Dataset, component_drop_fraction: float = 0.0, min_components_to_keep: int = 0, noise_fraction: float = 0.0, noise_white_probability: float = 0.5, seed: int = None) -> Dataset:
+    def corrupt_masks(dataset: Dataset, component_drop_fraction: float = 0.0, min_components_to_keep: int = 0, noise_fraction: float = 0.0, noise_white_probability: float = 0.5, seed: int = None, save_dir: str = None) -> Dataset:
         """
         Permanently corrupt masks by removing connected components and/or injecting random noise.
 
@@ -132,16 +132,21 @@ class DataAugmenter():
             noise_fraction: fraction of pixels to flip to random foreground/background.
             noise_white_probability: probability that a flipped pixel becomes foreground.
             seed: optional seed for reproducibility.
+            save_dir: optional directory to save corrupted masks for inspection.
         """
         if component_drop_fraction <= 0 and noise_fraction <= 0:
             return dataset
 
         import numpy as np
         import random
+        import os
 
         if seed is not None:
             random.seed(seed)
             np.random.seed(seed)
+
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
 
         if hasattr(dataset, 'dataset') and hasattr(dataset, 'indices'):
             target_dataset = dataset.dataset
@@ -155,6 +160,22 @@ class DataAugmenter():
             mask = DataAugmenter._remove_random_components(mask, component_drop_fraction, min_components_to_keep)
             mask = DataAugmenter._inject_random_noise(mask, noise_fraction, noise_white_probability)
             target_dataset.masks[idx] = mask
+            if save_dir:
+                import numpy as np
+                from PIL import Image
+
+                mask_np = mask.detach().cpu().numpy().squeeze()
+                mask_np = (mask_np > 0.5).astype(np.uint8) * 255
+                filename = None
+                if hasattr(target_dataset, "image_filenames") and target_dataset.image_filenames:
+                    filename = target_dataset.image_filenames[idx]
+                if not filename:
+                    filename = f"mask_{idx}.png"
+                base, ext = os.path.splitext(filename)
+                if not ext:
+                    ext = ".png"
+                save_path = os.path.join(save_dir, f"{base}_corrupted{ext}")
+                Image.fromarray(mask_np).save(save_path)
 
         return dataset
 
