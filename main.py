@@ -7,10 +7,9 @@ from src.shared.torch_coordinator import set_preload_complete
 
 def preload_torch():
     try:
+        import torch
         from ncempy.io import dm
         import numpy as np
-        import torch
-        import torchvision
         _ = torch.Tensor([0])  # Force lazy CUDA init
     except Exception as e:
         print(f"Error during torch preloading: {e}")

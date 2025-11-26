@@ -13,8 +13,10 @@ class RequestHandler:
 
     def load_model_async(self, model_name):
         def load():            
+            import torchvision
             from src.model.UNet import UNet
             from src.model.ImageSegmenter import ImageSegmenter
+
             self.unet = UNet(pre_loaded_model_path=f"src/data/model/{model_name}")
             self.segmenter = ImageSegmenter(self.unet)
             self.model_ready_event.set()
