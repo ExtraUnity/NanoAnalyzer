@@ -58,24 +58,20 @@ class ImageSegmenter:
         """
         from src.shared.torch_coordinator import ensure_torch_ready
         ensure_torch_ready()
-        
-        # Convert patches to tensor
-        patches_tensor = torch.tensor(patches, dtype=tensor.dtype, device=tensor.device)
-        
-        # Optimize model for inference
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.unet.to(device, memory_format=torch.channels_last).eval()
-                
-        # Prepare input tensor
-        patches_tensor = patches_tensor.to(device, memory_format=torch.channels_last)
+
+        # Move model once per session
+        if getattr(self, "_inference_device", None) != device:
+            self.unet.to(device, memory_format=torch.channels_last).eval()
+            self._inference_device = device
         
-        # Run inference with appropriate precision
+        patches_tensor = patches.to(device, memory_format=torch.channels_last, non_blocking=True)
+
         with torch.inference_mode():
             if device.type == "cuda":
                 with torch.autocast("cuda"):
                     output = self.unet(patches_tensor)
             else:
                 output = self.unet(patches_tensor)
-        
-        # Convert to numpy for post-processing
-        return output.cpu().detach().numpy()
+
+        return output

@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader, random_split
 import os
@@ -22,8 +23,7 @@ class ImagePreprocessor:
         """Prepare image patches for segmentation by converting to tensor and extracting patches."""
         import torchvision.transforms.functional as TF
         
-        tensor = TF.to_tensor(pil_image).unsqueeze(0)
-        tensor = tensor.to(device)
+        tensor = TF.to_tensor(pil_image).unsqueeze(0).to(device)
         stride_length = self.model_input_size[0]*4//5
         tensor_mirror_filled = mirror_fill(tensor, self.model_input_size, (stride_length,stride_length))
         patches = extract_slices(tensor_mirror_filled, self.model_input_size, (stride_length,stride_length))
@@ -275,6 +275,8 @@ def tensor_from_image(image_path: str, resize=(256,256)) -> Tensor:
     return image
 
 def to_2d_image_array(array: np.ndarray) -> np.ndarray:
+    if torch.is_tensor(array):
+        array = array.detach().cpu().numpy()
     return (np.squeeze(array) * 255).astype(np.uint8)
 
 def load_image_as_tensor(image_path: str):
@@ -323,6 +325,9 @@ def _extract_probabilities(segmented_image):
     """Extract foreground probabilities and confidence margin."""
     from scipy.special import softmax
     
+    if torch.is_tensor(segmented_image):
+        segmented_image = segmented_image.detach().cpu().numpy()
+
     probs = softmax(segmented_image, axis=1)
     fg_prob = probs[0, 1]  # Foreground probability
     bg_prob = probs[0, 0]  # Background probability
@@ -409,8 +414,8 @@ def tiff_force_8bit(image, **kwargs):
 
 # Made with help from https://www.programmersought.com/article/15316517340/
 def mirror_fill(images: Tensor, patch_size: tuple, stride_size: tuple) -> Tensor:
-    images_np = images.cpu().numpy()
-    batch_size, channels, img_width, img_height = images_np.shape
+    # images: (B, C, H, W)
+    _, _, img_height, img_width = images.shape
     patch_height, patch_width = patch_size
     stride_height, stride_width = stride_size
 
@@ -420,104 +425,76 @@ def mirror_fill(images: Tensor, patch_size: tuple, stride_size: tuple) -> Tensor
     needed_padding_width = (stride_width - remaining_width) % stride_width
     needed_padding_height = (stride_height - remaining_height) % stride_height
 
-    if needed_padding_width:
+    if needed_padding_height == 0 and needed_padding_width == 0:
+        return images
 
-        padded_images = np.empty(
-            (batch_size, channels, img_width + needed_padding_width, img_height), 
-            dtype=images_np.dtype
-        )
+    pad_left = needed_padding_width // 2
+    pad_right = needed_padding_width - pad_left
+    pad_top = needed_padding_height // 2
+    pad_bottom = needed_padding_height - pad_top
 
-        start_x = needed_padding_width // 2
-        end_x = start_x + img_width
-
-        for i, img in enumerate(images_np):
-            padded_images[i, :, start_x:end_x, :] = img
-            padded_images[i, :, :start_x, :] = np.flip(img[:, :start_x, :], axis=1)
-            padded_images[i, :, end_x:, :] = np.flip(img[:, img_width - (needed_padding_width - needed_padding_width // 2):, :], axis=1)
-        
-        images_np = padded_images
-    
-    if needed_padding_height:
-        img_width = images_np.shape[2]
-        padded_images = np.empty(
-            (batch_size, channels, img_width, img_height + needed_padding_height), 
-            dtype=images_np.dtype
-        )
-        start_y = needed_padding_height // 2
-        end_y = start_y + img_height
-
-        for i, img in enumerate(images_np):
-            padded_images[i, :, :, start_y:end_y] = img
-            padded_images[i, :, :, :start_y] = np.flip(img[:, :, :start_y], axis=2)
-            padded_images[i, :, :, end_y:] = np.flip(img[:, :, img_height - (needed_padding_height - needed_padding_height // 2):], axis=2)
-        
-        images_np = padded_images
-    
-    return torch.tensor(images_np, dtype=images.dtype, device=images.device)
+    return F.pad(
+        images,
+        (pad_left, pad_right, pad_top, pad_bottom),
+        mode="reflect",
+    )
     
 
 
 # Made with help from https://www.programmersought.com/article/15316517340/
-def extract_slices(images: Tensor, patch_size: tuple, stride_size: tuple) -> np.ndarray:
-    images_np = images.cpu().numpy()
-    batch_size, channels, img_width, img_height = images.shape
+def extract_slices(images: Tensor, patch_size: tuple, stride_size: tuple):
+    # images: (B, C, H, W)
     patch_height, patch_width = patch_size
     stride_height, stride_width = stride_size
 
-
-    n_patches_y = (img_height - patch_height) // stride_height + 1
-    n_patches_x = (img_width - patch_width) // stride_width + 1
-
-    n_patches_per_image = n_patches_x * n_patches_y
-
-    n_patches_total = n_patches_per_image * batch_size
-
-    patches = np.empty((n_patches_total, channels, patch_width, patch_height), dtype=images_np.dtype)
-
-    patch_idx = 0
-
-    for img in images_np:
-        for i in range(n_patches_y):
-            for j in range(n_patches_x):
-                start_x = j * stride_width
-                start_y = i * stride_height
-                end_x = start_x + patch_width
-                end_y = start_y + patch_height
-
-                patches[patch_idx] = img[:, start_x:end_x, start_y:end_y]
-                patch_idx += 1
+    unfolded = images.unfold(2, patch_height, stride_height).unfold(3, patch_width, stride_width)
+    # Shape: (B, C, n_h, n_w, patch_height, patch_width)
+    b, c, n_h, n_w, _, _ = unfolded.shape
+    patches = unfolded.permute(0, 2, 3, 1, 4, 5).reshape(-1, c, patch_height, patch_width).contiguous()
     return patches
 
 def construct_image_from_patches(patches: np.ndarray, img_size: tuple, stride_size: tuple):
-    img_width, img_height = img_size
-    stride_width, stride_height = stride_size
-    n_patches_total, channels, patch_width, patch_height = patches.shape
-    
+    """
+    Reconstruct an image from patches using torch.fold with proper overlap averaging.
+    Accepts torch tensors or numpy arrays; returns a torch tensor on the same device.
+    """
+    if not torch.is_tensor(patches):
+        patches = torch.as_tensor(patches)
+
+    img_height, img_width = img_size
+    stride_height, stride_width = stride_size
+    n_patches_total, channels, patch_height, patch_width = patches.shape
+
     n_patches_y = (img_height - patch_height) // stride_height + 1
     n_patches_x = (img_width - patch_width) // stride_width + 1
-
     n_patches_per_image = n_patches_x * n_patches_y
+
+    if n_patches_total % n_patches_per_image != 0:
+        raise ValueError("Patches count is not divisible by patches per image.")
 
     batch_size = n_patches_total // n_patches_per_image
 
-    images = np.zeros((batch_size, channels, img_width, img_height))
-    weights = np.zeros_like(images)
+    patches = patches.view(batch_size, n_patches_per_image, channels, patch_height, patch_width)
+    patches = patches.permute(0, 2, 3, 4, 1).reshape(
+        batch_size, channels * patch_height * patch_width, n_patches_per_image
+    )
 
-    for img_idx, (img, weights) in enumerate(zip(images, weights)):
-        start = img_idx * n_patches_per_image
+    output = F.fold(
+        patches,
+        output_size=(img_height, img_width),
+        kernel_size=(patch_height, patch_width),
+        stride=(stride_height, stride_width),
+    )
 
-        for i in range(n_patches_y):
-            for j in range(n_patches_x):
-                start_x = j * stride_width
-                start_y = i * stride_height
-                end_x = start_x + patch_width
-                end_y = start_y + patch_height
-                patch_idx = start + i * n_patches_x + j
-                img[:, start_x:end_x, start_y:end_y] += patches[patch_idx]
-                weights[:, start_x:end_x, start_y:end_y] += 1
-    images /= weights
-
-    return images
+    ones = torch.ones_like(patches)
+    weights = F.fold(
+        ones,
+        output_size=(img_height, img_width),
+        kernel_size=(patch_height, patch_width),
+        stride=(stride_height, stride_width),
+    )
+    output = output / weights
+    return output
 
 def get_normalizer(dataset):
     """Calculate normalization statistics for images of potentially different sizes."""
