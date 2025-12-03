@@ -46,7 +46,7 @@ class StatsWriter:
         from cv2 import CC_STAT_AREA
         return stats[1:, CC_STAT_AREA] 
     
-    def _get_scaled_meassurements(self, stats, file_info: FileInfo):
+    def get_scaled_meassurements(self, stats, file_info: FileInfo):
         pixel_area = file_info.pixel_width * file_info.pixel_height
         scaled_areas = self.__get_pixel_areas(stats) * file_info.downsize_factor**2 * pixel_area
         scaled_diameters = self.__get_diameters(stats) * file_info.downsize_factor * file_info.pixel_width 
@@ -56,7 +56,7 @@ class StatsWriter:
     def write_stats_to_txt(self, stats, file_info: FileInfo, particle_count, output_folder):
         """Write statistics for a single image to a separate TXT file."""
         try:
-            scaled_areas, scaled_diameters = self._get_scaled_meassurements(stats, file_info)
+            scaled_areas, scaled_diameters = self.get_scaled_meassurements(stats, file_info)
             txtfile_path = os.path.join(output_folder, f"{file_info.file_name}_statistics.txt")
             os.makedirs(os.path.dirname(txtfile_path), exist_ok=True)
 
@@ -102,7 +102,7 @@ class StatsWriter:
                 global_particle_idx = 1
                 for stats, file_info in zip(stats_list, file_info_list):
                     # Get measurements in the original unit
-                    scaled_areas, scaled_diameters = self._get_scaled_meassurements(stats, file_info)
+                    scaled_areas, scaled_diameters = self.get_scaled_meassurements(stats, file_info)
                     
                     # Convert to target unit if needed
                     if file_info.unit != target_unit:

@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from datetime import datetime
+from src.model.StatsWriter import StatsWriter
 from src.shared.FileInfo import FileInfo
 class SegmentationAnalyzer():
 
@@ -62,8 +63,9 @@ class SegmentationAnalyzer():
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
+        stats_writer = StatsWriter()
         try:
-            scaled_areas, scaled_diameters = self._get_scaled_meassurements(stats, file_info)
+            scaled_areas, scaled_diameters = stats_writer.get_scaled_meassurements(stats, file_info)
             histogram_data = {
                 "Area": scaled_areas,
                 "Diameter": scaled_diameters
@@ -88,36 +90,7 @@ class SegmentationAnalyzer():
         except Exception as e:
             print("Error in creating histogram: ", e)
             return None
-    
-    def write_stats_to_txt(self, stats, file_info: FileInfo, particle_count, output_folder):
-        try:
-            scaled_areas, scaled_diameters = self._get_scaled_meassurements(stats, file_info)
-            txtfile_path = os.path.join(output_folder, f"{file_info.file_name}_statistics.txt")
-            os.makedirs(os.path.dirname(txtfile_path), exist_ok=True)
-            
-            with open(txtfile_path, "w", encoding="utf-8") as txtfile:
-                txtfile.write("##############################\n")
-                txtfile.write("Date: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
-                txtfile.write("##############################\n")
-                txtfile.write(f"{'Particle No.':<12}{'Area [' + file_info.unit + '²]':>20}{'Diameter [' + file_info.unit + ']':>20}\n")
-                
-                for label_idx in range(1, particle_count + 1):
-                    area = scaled_areas[label_idx - 1]
-                    diameter = scaled_diameters[label_idx - 1]
-                    txtfile.write(f"{label_idx:<12}{area:>20.6f}{diameter:>20.6f}\n")
-                
-                txtfile.write("_______________________________\n")
-                txtfile.write(f"{'Total count':<12}{'Mean Area [' + file_info.unit + '²]':>20}{'Mean Diameter [' + file_info.unit + ']':>20}"
-                            f"{'Max Area [' + file_info.unit + '²]':>20}{'Max Diameter [' + file_info.unit + ']':>20}"
-                            f"{'Min Area [' + file_info.unit + '²]':>20}{'Min Diameter [' + file_info.unit + ']':>20}\n")
-                txtfile.write(f"{particle_count:<12}"
-                            f"{np.mean(scaled_areas):>20.6f}{np.mean(scaled_diameters):>20.6f}"
-                            f"{np.max(scaled_areas):>20.6f}{np.max(scaled_diameters):>20.6f}"
-                            f"{np.min(scaled_areas):>20.6f}{np.min(scaled_diameters):>20.6f}\n")
-        except Exception as e:
-            print("Error in writing statistics to txt file: ", e)
-
-    
+        
     def add_annotations(self, image, centroids, min_distance=10, max_offset_attempts=5):
         try:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -164,25 +137,7 @@ class SegmentationAnalyzer():
         return final_x, final_y
 
     
-    def __get_diameters(self, stats: np.ndarray):
-        """Calculate diameters using Equivalent Circular Diameter (ECD)."""
-        diameters = np.empty(stats.shape[0]-1)
-        for label_idx in range(1, stats.shape[0]):
-            area = stats[label_idx, cv2.CC_STAT_AREA]
-            diameter = 2 * np.sqrt(area / np.pi)
-            diameters[label_idx-1] = diameter
-        return diameters
     
-    def __get_pixel_areas(self, stats: np.ndarray):
-        return stats[1:, cv2.CC_STAT_AREA] 
-    
-
-    
-    def _get_scaled_meassurements(self, stats: np.ndarray, file_info: FileInfo):
-        pixel_area = file_info.pixel_width * file_info.pixel_height
-        scaled_areas = self.__get_pixel_areas(stats) * file_info.downsize_factor * pixel_area
-        scaled_diameters = self.__get_diameters(stats) * file_info.downsize_factor * file_info.pixel_width 
-        return scaled_areas, scaled_diameters
 
     def format_table_data(self, stats: np.ndarray, file_info: FileInfo, particle_count: int):
         if particle_count == 0:
@@ -192,7 +147,8 @@ class SegmentationAnalyzer():
                 "Diameter": [0, 0, 0, 0]
             }
             
-        scaled_areas, scaled_diameters = self._get_scaled_meassurements(stats, file_info)
+        stats_writer = StatsWriter()
+        scaled_areas, scaled_diameters = stats_writer.get_scaled_meassurements(stats, file_info)
         
         area_mean = np.mean(scaled_areas).round(2)
         area_max = np.max(scaled_areas).round(2)
