@@ -52,7 +52,7 @@ To run the application from the source code, run ```python main.py```
 
 ### Segmenting Images
 1. Load an image
-   - Click **Open Image** from the files tab and select a TEM or STEM image (e.g. `.tif`, `.dm3`, `.dm4`, `.png` or `.jpg`)
+   - Click **Open Image** from the files tab and select a TEM or STEM image (e.g. `.tif`, `.dm3`, `.dm4`)
    - The image should display, and scale information should be shown above the image.
    - Alternatively, you can set a scale by pressing **Set Scale**
    
