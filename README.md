@@ -14,9 +14,9 @@ NanoAnalyzer is developed by Christian Vedel Petersen & Nikolaj Nguyen originall
 2. [User Guide](https://github.com/ExtraUnity/NanoparticleAnalysis#user-guide)
    - [Segmenting Images](https://github.com/ExtraUnity/NanoparticleAnalysis#segmenting-images)
    - [Batch Processing](https://github.com/ExtraUnity/NanoparticleAnalysis#batch-processing)
-   - [Viewing Results and Statistics](https://github.com/ExtraUnity/NanoparticleAnalysis#viewing-results-and-statistics)
    - [Training a New Model](https://github.com/ExtraUnity/NanoparticleAnalysis#training-a-new-model)
    - [Data Format for Training](https://github.com/ExtraUnity/NanoparticleAnalysis#data-format-for-training)
+   - [Test Model](https://github.com/ExtraUnity/NanoparticleAnalysis#test-model)
 4. [License](https://github.com/ExtraUnity/NanoparticleAnalysis#license)
 5. [Contact](https://github.com/ExtraUnity/NanoparticleAnalysis#contact)
 
@@ -59,15 +59,13 @@ To run the application from the source code, run ```python main.py```
       <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/f6f48524-c27e-4d81-b3ac-4e6beba5b45a" />
       <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/03915506-94ca-42b7-a797-d9d6ccc2c5e5" />
 
-2. Choose a model
-   - Be default, the **pretrained model** is loaded.
-   - You can later switch to a **custom-trained model** and load it by pressing **Model > Load Model** (see [Training a New Model](https://github.com/ExtraUnity/NanoparticleAnalysis#training-a-new-model))
-     
 3. Run segmentation
    - Simply click **Run Segmentation** to segment the image
+      Note that images are downscaled to a maximum of 1024x1024 for computational efficiency.
      
 4. View results
    - After segmentation, the program will display the segmentation and write the statistics information to the folder `data/<name_of_image>/` (from the same directory as the .exe file)
+      - The statistics includes the per-particle metrics **Area**, **Diameter (equivalent circular diameter)** and **Particle ID** (for identification on segmentation map)
    - The segmentation can be viewed side by side in a fullscreen window by pressing **Fullscreen Image**
    - Summary statistics are viewed in the application. You can also export the data as CSV files under **Export**.
      
@@ -75,13 +73,57 @@ To run the application from the source code, run ```python main.py```
 
 
 ### Batch Processing
-
-### Viewing Results and Statistics
+1. Click **Analyze > Run segmentation on folder**
+2. Select folder to segment
+   - All images in the folder should have readable units (e.g. `nm`, `μm`) in their metadata, otherwise the program will not be able to segment the folder.
+4. Select output folder
+   The program will then segment the entire folder in the background. A folder for each segmentation will be created, along with a collected statistics text file.
+   
 
 ### Training a New Model
+NanoAnalyzer allows you to train new models on your own annotated data directly from the interface.
+1. Prepare your dataset
 
+   See [Data Format for Training](https://github.com/ExtraUnity/NanoparticleAnalysis#data-format-for-training)
+2. Open the training tab, **Model > Train New Model**
+3. Set training options
+   - Choose the dataset folders
+   - Optionally adjust
+     - Separate test set
+     - Number of epochs
+     - Learning rate
+     - Use of data augmentation (Random cropping, random rotation, random brightness adjustment, random contrast adjustment)
+     - Use of early stopping (25 epochs)
+4. Click **Train Model**
+   - The application will
+      - validate the dataset (matching sizes and binary masks),
+      - split it into training/validation/test sets (60/20/20),
+      - train the U-Net model,
+      - evaluate performance on the test set and display final model results along with example segmentations.
+   During training, the application will provide continuous statistics (after each epoch) on training loss and validation loss, along with the best epoch.
+   At any time, the user can stop the training, and the application will stop the training at the nearest checkpoint and save the best model.
+5. Load the new model
+   - After training, the new model is saved locally (`data/models/`).
+   - You can load the model by clicking **Model > Load Model** and selecting the model `.pt` file.
 ### Data Format for Training
+A training dataset consists of two folders:
+- `images/` - The raw TEM/STEM images
+- `masks/` - Corresponding binary annotation masks
+Requirements:
+- Each image in `images/` must have a corresponding mask in `masks/` with:
+   - The same filename
+   - The same dimensions
+- Masks should have binary pixel values
+   - 0 = background
+   - 1 (or 255) = foreground (particle)
+Large images will automatically be downscaled to 1024x1024 during training to fit the downscaling during inference.
 
+### Test Model
+You can test the currently loaded model against a new dataset.
+1. Click **Model > Test Model**
+2. Select the test images folder
+3. Select the test masks folder
+The test dataset should be formatted according to [Data Format for Training](https://github.com/ExtraUnity/NanoparticleAnalysis#data-format-for-training).
 
 ## License
 Copyright © 2025, Christian Vedel Petersen & Nikolaj Nguyen
