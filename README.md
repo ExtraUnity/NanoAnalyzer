@@ -25,31 +25,28 @@ NanoAnalyzer is developed by Christian Vedel Petersen & Nikolaj Nguyen originall
 ## Installation Guide
 
 ### Downloading executables
-The application has been exported as executables for Windows. Download these through [Releases](https://github.com/ExtraUnity/NanoparticleAnalysis/releases). These also have pre-trained models ready for use.
-If you want to build the project using the source code, follow the guides below.
+The application has been exported as an executable for Windows. 
+Download these through [Releases](https://github.com/ExtraUnity/NanoparticleAnalysis/releases). These also have pre-trained models ready for use.
+Simply download and unzip the application. Then open the **NanoAnalyzer.exe** to start the program. Alternatively use the installer provided.
+If only CPU segmentation is needed, we recommend downloading the CPU-only version of the application.
 
 ### Running the source code
-## Install Conda and import the environment.yml based on your OS
-0. Conda installation guide https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html 
-1. Install pyinstaller with 'pip install pyinstaller'
+To run the source code, do the following steps:
+0. Clone/download the repository
+1. Install Conda
+2. Create the Conda environment
+3. Run the main.py
 
-## Windows:
-0. Navigate to root of project folder
-1. Run the following: 'pyinstaller --noconfirm --noconsole --name NanoAnalyzer  --add-data "src/data/model/UNet_best_06-06.pt;src/data/model" main.py '
-2. If you do not have a pre-trained model, do not run with the --add-data argument
-3. To run the application, navigate to dist folder and execute/open: 'main.exe'
+#### Installing Conda
+An installation guide for Conda can be found [here](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
 
-## Linux (Ubuntu): 
-0. Navigate to root of project folder
-1. Give build script exec. permission: 'sudo chmod +x build_app_mkl.sh'
-2. Run the script 'build_app_mkl.sh'
-3. To run the application, navigate to the 'NanoAnalyzer' folder and run NanoAnalyzer.
+#### Creating the conda environment
+To create the conda environment, run the following commands in the terminal:
+1. ```conda env create -f environment.yml```
+2. ```conda activate nanoanalyzer```
 
-## MacOS: 
-0. Navigate to root of project folder
-1. Give build script exec. permission: 'sudo chmod +x build_app_mac.sh'
-2. Run the script 'build_app_mac.sh'
-3. To run the application, navigate to the 'NanoAnalyzer' folder and run NanoAnalyzer.
+#### Running the application
+To run the application from the source code, run ```python main.py```
 
 ## User Guide
 
