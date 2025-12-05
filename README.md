@@ -1,4 +1,5 @@
 # NanoAnalyzer
+
 **NanoAnalyzer** is a user-friendly application for automated segmentation and analysis of supported nanoparticles in electron microscopy images (TEM and STEM).  
 It combines a U-Net–based deep learning model with an intuitive graphical interface, allowing materials researchers to:
 
@@ -26,7 +27,7 @@ NanoAnalyzer is developed by Christian Vedel Petersen & Nikolaj Nguyen originall
 
 ### Downloading executables
 The application has been exported as an executable for Windows. 
-Download these through [Releases](https://github.com/ExtraUnity/NanoparticleAnalysis/releases). These also have pre-trained models ready for use.
+Download it through [Releases](https://github.com/ExtraUnity/NanoparticleAnalysis/releases). This package also includes a pre-trained model ready for use.
 Simply download and unzip the application. Then open the **NanoAnalyzer.exe** to start the program. Alternatively use the installer provided.
 If only CPU segmentation is needed, we recommend downloading the CPU-only version of the application.
 
@@ -35,7 +36,7 @@ To run the source code, do the following steps:
 0. Clone/download the repository
 1. Install Conda
 2. Create the Conda environment
-3. Run the main.py
+3. Run `main.py`
 
 #### Installing Conda
 An installation guide for Conda can be found [here](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html)
@@ -128,7 +129,7 @@ You can test the currently loaded model against a new dataset.
 3. Select the test masks folder
    
 The test dataset should be formatted according to [Data Format for Training](https://github.com/ExtraUnity/NanoparticleAnalysis#data-format-for-training).
-
+The program will test the model's performance against the dataset and display the final results (IoU and Dice scores) along with example segmentations.
 ## License
 Copyright © 2025, Christian Vedel Petersen & Nikolaj Nguyen
 
