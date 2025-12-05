@@ -100,6 +100,7 @@ NanoAnalyzer allows you to train new models on your own annotated data directly 
       - split it into training/validation/test sets (60/20/20),
       - train the U-Net model,
       - evaluate performance on the test set and display final model results along with example segmentations.
+        
    During training, the application will provide continuous statistics (after each epoch) on training loss and validation loss, along with the best epoch.
    At any time, the user can stop the training, and the application will stop the training at the nearest checkpoint and save the best model.
 5. Load the new model
@@ -109,6 +110,7 @@ NanoAnalyzer allows you to train new models on your own annotated data directly 
 A training dataset consists of two folders:
 - `images/` - The raw TEM/STEM images
 - `masks/` - Corresponding binary annotation masks
+  
 Requirements:
 - Each image in `images/` must have a corresponding mask in `masks/` with:
    - The same filename
@@ -116,6 +118,7 @@ Requirements:
 - Masks should have binary pixel values
    - 0 = background
    - 1 (or 255) = foreground (particle)
+     
 Large images will automatically be downscaled to 1024x1024 during training to fit the downscaling during inference.
 
 ### Test Model
@@ -123,6 +126,7 @@ You can test the currently loaded model against a new dataset.
 1. Click **Model > Test Model**
 2. Select the test images folder
 3. Select the test masks folder
+   
 The test dataset should be formatted according to [Data Format for Training](https://github.com/ExtraUnity/NanoparticleAnalysis#data-format-for-training).
 
 ## License
