@@ -51,6 +51,32 @@ To run the application from the source code, run ```python main.py```
 ## User Guide
 
 ### Segmenting Images
+1. Load an image
+   - Click **Open Image** from the files tab and select a TEM or STEM image (e.g. `.tif`, `.dm3`, `.dm4`, `.png` or `.jpg`)
+   - The image should display, and scale information should be shown above the image.
+   - Alternatively, you can set a scale by pressing **Set Scale**
+   
+      <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/f6f48524-c27e-4d81-b3ac-4e6beba5b45a" />
+      <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/03915506-94ca-42b7-a797-d9d6ccc2c5e5" />
+
+2. Choose a model
+   - Be default, the **pretrained model** is loaded.
+   - You can later switch to a **custom-trained model** and load it by pressing **Model > Load Model** (see [Training a New Model](https://github.com/ExtraUnity/NanoparticleAnalysis#training-a-new-model))
+     
+      <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/9f9ea52c-35e3-467a-8b46-9770b3302de1" />
+
+3. Run segmentation
+   - Simply click **Run Segmentation** to segment the image
+     
+      <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/95578d03-67b5-4b7e-8e4f-6dbe0a012d27" />
+
+4. View results
+   - After segmentation, the program will display the segmentation and write the statistics information to the folder `data/<name_of_image>/` (from the same directory as the .exe file)
+   - The segmentation can be viewed side by side in a fullscreen window by pressing **Fullscreen Image**
+   - Summary statistics are viewed in the application. You can also export the data as CSV files under **Export**.
+     
+      <img width="443" height="262" alt="image" src="https://github.com/user-attachments/assets/97b10898-1236-4c19-b2e8-19d43479c6e3" />
+
 
 ### Batch Processing
 
