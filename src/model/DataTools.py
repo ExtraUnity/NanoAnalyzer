@@ -13,6 +13,16 @@ from src.shared.IOFunctions import is_dm_format
 from src.model.SegmentationDataset import SegmentationDataset
 from src.shared.ModelConfig import ModelConfig
 
+def _get_safe_num_workers(desired_workers: int) -> int:
+    """
+    Avoid spawning extra GUI instances when running the frozen PyInstaller build.
+    Torch DataLoader workers spin up new Python processes; in a frozen app those
+    processes relaunch the executable unless worker count is zero.
+    """
+    if getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS"):
+        return 0
+    return desired_workers
+
 class ImagePreprocessor:
     """Handles all image preprocessing operations for the segmentation model."""
     
@@ -187,9 +197,13 @@ def get_dataloaders(dataset: Dataset, model_config: ModelConfig, input_size: tup
     train_data, val_data, test_data = get_data_splits(dataset, model_config, input_size, log_file_path)    
     
     if torch.cuda.is_available():
-        train_dataloader = DataLoader(train_data, batch_size=32, shuffle=True, drop_last=True, num_workers=24)
+        batch_size = 32
+        worker_count = _get_safe_num_workers(12)
     else:
-        train_dataloader = DataLoader(train_data, batch_size=8, shuffle=True, drop_last=True, num_workers=2)
+        batch_size = 8
+        worker_count = _get_safe_num_workers(2)
+
+    train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=worker_count)
     val_dataloader = DataLoader(val_data, batch_size=1, shuffle=True, drop_last=True)
     test_dataloader = DataLoader(test_data, batch_size=1)
     return (train_dataloader, val_dataloader, test_dataloader)
@@ -228,10 +242,16 @@ def get_dataloaders_kfold_already_split(train_data, val_data, batch_size, input_
     if not augmentations[0]: # No random cropping
         train_data = process_and_slice(train_data, input_size)
     train_data = data_augmenter.augment_dataset(train_data, augmentations)
-  
+
     val_data = process_and_slice(val_data, input_size)
 
-    train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True, num_workers=24)
+    train_dataloader = DataLoader(
+        train_data,
+        batch_size=batch_size,
+        shuffle=True,
+        drop_last=True,
+        num_workers=_get_safe_num_workers(24),
+    )
     val_dataloader = DataLoader(val_data, batch_size=1, shuffle=True, drop_last=True)
     return (train_dataloader, val_dataloader)
 
