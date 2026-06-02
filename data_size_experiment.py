@@ -89,20 +89,24 @@ class DataSizeExperiment:
         print(f"Available training pool: {len(available_train_indices)} images")
         
         # Create training sets for each percentage
+        # NOTE: keep the full available training pool for patch-based sampling.
         self.data_splits = {}
         for percentage in train_percentages:
-            num_train = max(1, int(len(available_train_indices) * percentage))
-            train_indices = available_train_indices[:num_train]
-            
+            # Number of images requested by the percentage (informational only)
+            requested_num_train = max(1, int(len(available_train_indices) * percentage))
+            # Use the full available training images as pool; sampling will be done on patches later
+            train_indices = available_train_indices
+
             self.data_splits[percentage] = {
                 'train_indices': train_indices,
                 'val_indices': val_indices,
                 'test_indices': test_indices,
-                'num_train': num_train,
+                'num_train': len(available_train_indices),  # available images in pool
+                'requested_num_train': requested_num_train,
                 'num_val': len(val_indices),
                 'num_test': len(test_indices)
             }
-            print(f"{int(percentage*100)}% training data: {num_train} images")
+            print(f"{int(percentage*100)}% training data requested: {requested_num_train} images (sampling patches from {len(available_train_indices)} available images)")
 
         self.test_indices = test_indices
         self.val_indices = val_indices
