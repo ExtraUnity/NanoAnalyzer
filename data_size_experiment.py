@@ -110,7 +110,7 @@ class DataSizeExperiment:
         return self.data_splits
     
     def create_dataloaders(self, train_indices, val_indices, test_indices, input_size=(256, 256), 
-                          with_augmentation=True, batch_size=8):
+                          with_augmentation=True, batch_size=8, train_percentage: float = None):
         """
         Create dataloaders for a specific data split.
         """
@@ -118,26 +118,45 @@ class DataSizeExperiment:
         train_subset = slice_dataset_in_four(Subset(self.dataset, train_indices), input_size)
         val_subset = slice_dataset_in_four(Subset(self.dataset, val_indices), input_size)
         test_subset = slice_dataset_in_four(Subset(self.dataset, test_indices), input_size)
-        
-        # Apply data augmentation to training set
+
+        # Sample patches from the training subset according to train_percentage (patch-based masking)
+        import numpy as _np
+        from torch.utils.data import Subset as TorchSubset
+
+        total_patches = len(train_subset)
+        if train_percentage is None:
+            sampled_train_subset = train_subset
+        else:
+            desired_patches = max(1, int(total_patches * train_percentage))
+            desired_patches = min(desired_patches, total_patches)
+            if desired_patches >= total_patches:
+                sampled_train_subset = train_subset
+            else:
+                rng = _np.random.default_rng()
+                sampled_indices = rng.choice(total_patches, size=desired_patches, replace=False)
+                sampled_train_subset = TorchSubset(train_subset, sampled_indices.tolist())
+
+        # Apply data augmentation to the sampled training patches
         data_augmenter = DataAugmenter()
         if with_augmentation:
-            train_data = data_augmenter.augment_dataset(train_subset)
+            train_data = data_augmenter.augment_dataset(sampled_train_subset)
         else:
             train_data = data_augmenter.augment_dataset(
-                train_subset,
+                sampled_train_subset,
                 [False, False, False, False, False, False, False],
             )
 
         val_data = val_subset
         test_data = test_subset
-        
+
         # Create dataloaders
         train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
         val_dataloader = DataLoader(val_data, batch_size=1, shuffle=False)
         test_dataloader = DataLoader(test_data, batch_size=1, shuffle=False)
-        
-        return train_dataloader, val_dataloader, test_dataloader
+
+        # Return dataloaders and the number of unique training patches sampled (before augmentation repeats)
+        num_train_patches = len(sampled_train_subset)
+        return train_dataloader, val_dataloader, test_dataloader, num_train_patches
     
     def train_single_model(self, train_percentage, epochs=150, learning_rate=0.0001, 
                           input_size=(256, 256), with_augmentation=True):
@@ -157,15 +176,17 @@ class DataSizeExperiment:
         
         # Get data split
         split = self.data_splits[train_percentage]
-        print(f"Training samples: {split['num_train']}")
+        print(f"Training image count: {split.get('num_train', 'N/A')}")
+        
+        # Create dataloaders (now sampling patches according to train_percentage)
+        train_dataloader, val_dataloader, test_dataloader, num_train_patches = self.create_dataloaders(
+            split['train_indices'], split['val_indices'], split['test_indices'],
+            input_size=input_size, with_augmentation=with_augmentation, train_percentage=train_percentage
+        )
+
+        print(f"Training patch count (used): {num_train_patches}")
         print(f"Validation samples: {split['num_val']}")
         print(f"Test samples: {split['num_test']}")
-        
-        # Create dataloaders
-        train_dataloader, val_dataloader, test_dataloader = self.create_dataloaders(
-            split['train_indices'], split['val_indices'], split['test_indices'],
-            input_size=input_size, with_augmentation=with_augmentation
-        )
         
         # Initialize model
         unet = UNet()
@@ -200,6 +221,7 @@ class DataSizeExperiment:
         result = {
             'train_percentage': train_percentage,
             'num_train_images': split['num_train'],
+            'num_train_patches': num_train_patches,
             'mean_iou': evaluation_result.mean_iou,
             'mean_dice': evaluation_result.mean_dice,
             'std_iou': np.std(evaluation_result.iou_scores),
