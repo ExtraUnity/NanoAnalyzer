@@ -87,63 +87,65 @@ class DataSizeExperiment:
         print(f"Test set size: {len(test_indices)} images")
         print(f"Validation set size: {len(val_indices)} images")
         print(f"Available training pool: {len(available_train_indices)} images")
+
+        # Build patch datasets immediately after image-level split.
+        # From this point forward, training/validation/testing operate on patches only.
+        train_subset = Subset(self.dataset, available_train_indices)
+        val_subset = Subset(self.dataset, val_indices)
+        test_subset = Subset(self.dataset, test_indices)
+
+        train_quadrants = slice_dataset_in_four(train_subset, input_size)
+        val_quadrants = slice_dataset_in_four(val_subset, input_size)
+        test_quadrants = slice_dataset_in_four(test_subset, input_size)
+
+        self.train_patch_pool = process_and_slice(Subset(train_quadrants, list(range(len(train_quadrants)))), input_size)
+        self.val_patches = process_and_slice(Subset(val_quadrants, list(range(len(val_quadrants)))), input_size)
+        self.test_patches = process_and_slice(Subset(test_quadrants, list(range(len(test_quadrants)))), input_size)
+
+        print(f"Available training patch pool: {len(self.train_patch_pool)} patches")
+        print(f"Validation patch count: {len(self.val_patches)}")
+        print(f"Test patch count: {len(self.test_patches)}")
         
-        # Create training sets for each percentage
-        # NOTE: keep the full available training pool for patch-based sampling.
+        # Create experiment configs per percentage (sampling happens on patch pool)
         self.data_splits = {}
         for percentage in train_percentages:
-            # Number of images requested by the percentage (informational only)
-            requested_num_train = max(1, int(len(available_train_indices) * percentage))
-            # Use the full available training images as pool; sampling will be done on patches later
-            train_indices = available_train_indices
+            requested_num_train_patches = max(1, int(len(self.train_patch_pool) * percentage))
+            requested_num_train_patches = min(requested_num_train_patches, len(self.train_patch_pool))
 
             self.data_splits[percentage] = {
-                'train_indices': train_indices,
-                'val_indices': val_indices,
-                'test_indices': test_indices,
-                'num_train': len(available_train_indices),  # available images in pool
-                'requested_num_train': requested_num_train,
-                'num_val': len(val_indices),
-                'num_test': len(test_indices)
+                'requested_num_train_patches': requested_num_train_patches,
+                'num_train_patches_pool': len(self.train_patch_pool),
+                'num_val_patches': len(self.val_patches),
+                'num_test_patches': len(self.test_patches)
             }
-            print(f"{int(percentage*100)}% training data requested: {requested_num_train} images (sampling patches from {len(available_train_indices)} available images)")
+            print(
+                f"{int(percentage*100)}% training data requested: "
+                f"{requested_num_train_patches} patches "
+                f"(sampling from {len(self.train_patch_pool)} available training patches)"
+            )
 
         self.test_indices = test_indices
         self.val_indices = val_indices
         
         return self.data_splits
     
-    def create_dataloaders(self, train_indices, val_indices, test_indices, input_size=(256, 256), 
-                          with_augmentation=True, batch_size=8, train_percentage: float = None):
+    def create_dataloaders(self, train_percentage: float, with_augmentation=True, batch_size=8):
         """
         Create dataloaders for a specific data split.
         """
 
-        # Split original images into 4 quadrants first (image-level -> 4 patches per image)
-        train_quadrants = slice_dataset_in_four(Subset(self.dataset, train_indices), input_size)
-        val_quadrants = slice_dataset_in_four(Subset(self.dataset, val_indices), input_size)
-        test_quadrants = slice_dataset_in_four(Subset(self.dataset, test_indices), input_size)
-
-        # For each quadrant, ensure patches match the model input size (mirror_fill + extract_slices)
+        # Sample patches from the precomputed training patch pool according to train_percentage
         from torch.utils.data import Subset as TorchSubset
-        train_patches = process_and_slice(TorchSubset(train_quadrants, list(range(len(train_quadrants)))), input_size)
-        val_patches = process_and_slice(TorchSubset(val_quadrants, list(range(len(val_quadrants)))), input_size)
-        test_patches = process_and_slice(TorchSubset(test_quadrants, list(range(len(test_quadrants)))), input_size)
-
-        # Sample patches from the training patches dataset according to train_percentage (patch-based masking)
         import numpy as _np
-        total_patches = len(train_patches)
-        if train_percentage is None:
-            sampled_train_subset = train_patches
+        total_patches = len(self.train_patch_pool)
+        desired_patches = max(1, int(total_patches * train_percentage))
+        desired_patches = min(desired_patches, total_patches)
+        if desired_patches >= total_patches:
+            sampled_train_subset = self.train_patch_pool
         else:
-            desired_patches = max(1, int(total_patches * train_percentage))
-            desired_patches = min(desired_patches, total_patches)
-            if desired_patches >= total_patches:
-                sampled_train_subset = train_patches
-            else:
-                rng = _np.random.default_rng()
-                sampled_indices = rng.choice(total_patches, size=desired_patches, replace=False)
-                sampled_train_subset = TorchSubset(train_patches, sampled_indices.tolist())
+            rng = _np.random.default_rng()
+            sampled_indices = rng.choice(total_patches, size=desired_patches, replace=False)
+            sampled_train_subset = TorchSubset(self.train_patch_pool, sampled_indices.tolist())
 
         # Apply data augmentation to the sampled training patches
         data_augmenter = DataAugmenter()
@@ -155,8 +157,8 @@ class DataSizeExperiment:
                 [False, False, False, False, False, False, False],
             )
 
-        val_data = val_patches
-        test_data = test_patches
+        val_data = self.val_patches
+        test_data = self.test_patches
 
         # Create dataloaders
         train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -185,17 +187,17 @@ class DataSizeExperiment:
         
         # Get data split
         split = self.data_splits[train_percentage]
-        print(f"Training image count: {split.get('num_train', 'N/A')}")
+        print(f"Training patch pool size: {split['num_train_patches_pool']}")
         
         # Create dataloaders (now sampling patches according to train_percentage)
         train_dataloader, val_dataloader, test_dataloader, num_train_patches = self.create_dataloaders(
-            split['train_indices'], split['val_indices'], split['test_indices'],
-            input_size=input_size, with_augmentation=with_augmentation, train_percentage=train_percentage
+            train_percentage=train_percentage,
+            with_augmentation=with_augmentation
         )
 
         print(f"Training patch count (used): {num_train_patches}")
-        print(f"Validation samples: {split['num_val']}")
-        print(f"Test samples: {split['num_test']}")
+        print(f"Validation patch count: {split['num_val_patches']}")
+        print(f"Test patch count: {split['num_test_patches']}")
         
         # Initialize model
         unet = UNet()
@@ -229,7 +231,6 @@ class DataSizeExperiment:
         # Store results
         result = {
             'train_percentage': train_percentage,
-            'num_train_images': split['num_train'],
             'num_train_patches': num_train_patches,
             'mean_iou': evaluation_result.mean_iou,
             'mean_dice': evaluation_result.mean_dice,
@@ -307,12 +308,12 @@ class DataSizeExperiment:
             
             f.write("RESULTS SUMMARY:\n")
             f.write("-"*80 + "\n")
-            f.write(f"{'Train %':<10} {'#Images':<10} {'Mean IoU':<15} {'Mean Dice':<15} {'Time (s)':<12}\n")
+            f.write(f"{'Train %':<10} {'#Patches':<10} {'Mean IoU':<15} {'Mean Dice':<15} {'Time (s)':<12}\n")
             f.write("-"*80 + "\n")
             
             for result in results:
                 f.write(f"{int(result['train_percentage']*100):<10} "
-                       f"{result['num_train_images']:<10} "
+                      f"{result['num_train_patches']:<10} "
                        f"{result['mean_iou']:.4f}±{result['std_iou']:.4f}  "
                        f"{result['mean_dice']:.4f}±{result['std_dice']:.4f}  "
                        f"{result['training_time']:.2f}\n")
@@ -322,7 +323,7 @@ class DataSizeExperiment:
             f.write("="*80 + "\n\n")
             
             for result in results:
-                f.write(f"Training Data: {int(result['train_percentage']*100)}% ({result['num_train_images']} images)\n")
+                f.write(f"Training Data: {int(result['train_percentage']*100)}% ({result['num_train_patches']} patches)\n")
                 f.write(f"Model: {result['model_name']}\n")
                 f.write(f"  Mean IoU:  {result['mean_iou']:.4f} ± {result['std_iou']:.4f}\n")
                 f.write(f"  IoU Range: [{result['min_iou']:.4f}, {result['max_iou']:.4f}]\n")
@@ -338,7 +339,7 @@ class DataSizeExperiment:
         Create visualization plots of the experiment results.
         """
         train_percentages = [r['train_percentage'] * 100 for r in results]
-        num_images = [r['num_train_images'] for r in results]
+        num_patches = [r['num_train_patches'] for r in results]
         mean_iou = [r['mean_iou'] for r in results]
         mean_dice = [r['mean_dice'] for r in results]
         std_iou = [r['std_iou'] for r in results]
@@ -369,13 +370,13 @@ class DataSizeExperiment:
         ax2.grid(True, alpha=0.3)
         ax2.set_ylim(0, 1)
         
-        # Plot 3: IoU and Dice on same plot vs Number of Images
+        # Plot 3: IoU and Dice on same plot vs Number of Patches
         ax3 = axes[1, 0]
-        ax3.plot(num_images, mean_iou, marker='o', label='IoU', linewidth=2, markersize=8)
-        ax3.plot(num_images, mean_dice, marker='s', label='Dice', linewidth=2, markersize=8)
-        ax3.set_xlabel('Number of Training Images', fontsize=12)
+        ax3.plot(num_patches, mean_iou, marker='o', label='IoU', linewidth=2, markersize=8)
+        ax3.plot(num_patches, mean_dice, marker='s', label='Dice', linewidth=2, markersize=8)
+        ax3.set_xlabel('Number of Training Patches', fontsize=12)
         ax3.set_ylabel('Score', fontsize=12)
-        ax3.set_title('Performance Metrics vs Number of Training Images', fontsize=14)
+        ax3.set_title('Performance Metrics vs Number of Training Patches', fontsize=14)
         ax3.legend(fontsize=11)
         ax3.grid(True, alpha=0.3)
         ax3.set_ylim(0, 1)

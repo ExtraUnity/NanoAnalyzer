@@ -104,21 +104,11 @@ def slice_dataset_in_four(dataset, input_size=(256, 256)):
         width = img.shape[-1]
         height = img.shape[-2]
         source_file_info = _get_dataset_file_info(source_dataset, source_index)
-        # Always produce four quadrant entries per source image. If the image is
-        # smaller than the target input size, create four identical quadrants
-        # (with distinct filenames) so downstream processing yields four patches
-        # per image for consistent patch-based sampling.
         if width <= input_size[0] or height <= input_size[1]:
-            filename_slices = [
-                filename + " TOP LEFT",
-                filename + " BOTTOM LEFT",
-                filename + " TOP RIGHT",
-                filename + " BOTTOM RIGHT"
-            ]
-            images.extend([img, img, img, img])
-            masks.extend([mask, mask, mask, mask])
-            filenames.extend(filename_slices)
-            file_infos.extend([_copy_file_info(source_file_info, name) for name in filename_slices])
+            images.append(img)
+            masks.append(mask)
+            filenames.append(filename)
+            file_infos.append(_copy_file_info(source_file_info, filename))
             continue
         new_width = width // 2
         new_height = height // 2
