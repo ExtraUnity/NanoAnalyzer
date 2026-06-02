@@ -34,6 +34,7 @@ class SegmentationDataset(Dataset):
 
         self.images = []
         self.masks = []
+        self.file_infos = []
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         if not image_dir or not mask_dir:
@@ -127,12 +128,13 @@ class SegmentationDataset(Dataset):
         return image, mask
 
     @classmethod
-    def from_image_set(cls, images, masks, file_names=None, transforms=None):
+    def from_image_set(cls, images, masks, file_names=None, transforms=None, file_infos=None):
         res = cls()
         res.images = images
         res.masks = masks
         res.image_filenames = file_names
         res.transform = transforms
+        res.file_infos = file_infos or []
         return res
 
     

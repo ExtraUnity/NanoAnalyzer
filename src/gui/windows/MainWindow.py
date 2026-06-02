@@ -330,19 +330,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
         if evaluation_result is None:
             return
-        mean_iou = evaluation_result.mean_iou
-        mean_dice = evaluation_result.mean_dice
+
+        def format_metric(value):
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                return "N/A"
+            if value != value:
+                return "N/A"
+            return f"{value:.4f}"
+
         dialog = QDialog()
         dialog.setWindowTitle("Model Evaluation Metrics")
-        dialog.resize(400, 400)  # width, height
+        dialog.resize(400, 520)  # width, height
 
         layout = QVBoxLayout()
-        label = QLabel(f"<h3>Mean IOU:</h3> {mean_iou:.4f}<br>"
-                       f"<h3>Mean Dice Score:</h3> {mean_dice:.4f}<hr>"
-                       f"<h3>Min IOU:</h3> {evaluation_result.min_iou:.4f}<br>"
-                       f"<h3>Min Dice Score:</h3> {evaluation_result.min_dice:.4f}<hr>"
-                       f"<h3>Max IOU:</h3> {evaluation_result.max_iou:.4f}<br>"
-                       f"<h3>Max Dice Score:</h3> {evaluation_result.max_dice:.4f}<hr>"
+        label = QLabel(f"<h3>Mean IoU:</h3> {format_metric(evaluation_result.mean_iou)}<br>"
+                       f"<h3>Mean Dice Score:</h3> {format_metric(evaluation_result.mean_dice)}<br>"
+                       f"<h3>Mean Precision:</h3> {format_metric(getattr(evaluation_result, 'mean_precision', None))}<br>"
+                       f"<h3>Mean Recall:</h3> {format_metric(getattr(evaluation_result, 'mean_recall', None))}<hr>"
+                       f"<h3>Min IoU:</h3> {format_metric(evaluation_result.min_iou)}<br>"
+                       f"<h3>Min Dice Score:</h3> {format_metric(evaluation_result.min_dice)}<br>"
+                       f"<h3>Min Precision:</h3> {format_metric(getattr(evaluation_result, 'min_precision', None))}<br>"
+                       f"<h3>Min Recall:</h3> {format_metric(getattr(evaluation_result, 'min_recall', None))}<hr>"
+                       f"<h3>Max IoU:</h3> {format_metric(evaluation_result.max_iou)}<br>"
+                       f"<h3>Max Dice Score:</h3> {format_metric(evaluation_result.max_dice)}<br>"
+                       f"<h3>Max Precision:</h3> {format_metric(getattr(evaluation_result, 'max_precision', None))}<br>"
+                       f"<h3>Max Recall:</h3> {format_metric(getattr(evaluation_result, 'max_recall', None))}<hr>"
                        f"<h3>Tested on:</h3> {len(evaluation_result)} samples"
                        )
         label.setWordWrap(True)

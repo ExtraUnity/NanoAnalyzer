@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader, random_split
 import os
+import copy
 from PIL import Image
 from torch import Tensor
 import numpy as np
@@ -12,6 +13,47 @@ from src.model.dmFileReader import dmFileReader
 from src.shared.IOFunctions import is_dm_format
 from src.model.SegmentationDataset import SegmentationDataset
 from src.shared.ModelConfig import ModelConfig
+
+
+def _copy_file_info(file_info, file_name=None):
+    if file_info is None:
+        return None
+
+    copied_file_info = copy.copy(file_info)
+    if file_name is not None:
+        copied_file_info.file_name = os.path.splitext(file_name)[0]
+    return copied_file_info
+
+
+def _get_dataset_file_info(dataset, index):
+    file_infos = getattr(dataset, "file_infos", None)
+    if file_infos and index < len(file_infos):
+        return _copy_file_info(file_infos[index], dataset.image_filenames[index])
+
+    image_dir = getattr(dataset, "image_dir", None)
+    image_filenames = getattr(dataset, "image_filenames", None)
+    if not image_dir or not image_filenames or index >= len(image_filenames):
+        return None
+
+    from src.shared.ParticleImage import ParticleImage
+
+    image_path = os.path.join(image_dir, image_filenames[index])
+    try:
+        return ParticleImage.load_and_preprocess(image_path).file_info
+    except Exception:
+        return None
+
+def _resolve_dataset_source(dataset, index):
+    if hasattr(dataset, "indices") and hasattr(dataset, "dataset"):
+        return dataset.dataset, dataset.indices[index]
+    return dataset, index
+
+def _get_dataset_filename(dataset, index):
+    source_dataset, source_index = _resolve_dataset_source(dataset, index)
+    image_filenames = getattr(source_dataset, "image_filenames", None)
+    if image_filenames and source_index < len(image_filenames):
+        return image_filenames[source_index]
+    return f"image_{source_index:03d}"
 
 def _get_safe_num_workers(desired_workers: int) -> int:
     """
@@ -55,12 +97,18 @@ def slice_dataset_in_four(dataset, input_size=(256, 256)):
     images = []
     masks = []
     filenames = []
-    for (img, mask), filename in zip(dataset, dataset.image_filenames):
+    file_infos = []
+    for index, (img, mask) in enumerate(dataset):
+        source_dataset, source_index = _resolve_dataset_source(dataset, index)
+        filename = _get_dataset_filename(dataset, index)
         width = img.shape[-1]
         height = img.shape[-2]
+        source_file_info = _get_dataset_file_info(source_dataset, source_index)
         if width <= input_size[0] or height <= input_size[1]:
             images.append(img)
             masks.append(mask)
+            filenames.append(filename)
+            file_infos.append(_copy_file_info(source_file_info, filename))
             continue
         new_width = width // 2
         new_height = height // 2
@@ -86,12 +134,14 @@ def slice_dataset_in_four(dataset, input_size=(256, 256)):
         images.extend(image_slices)
         masks.extend(mask_slices)
         filenames.extend(filename_slices)
-    return SegmentationDataset.from_image_set(images, masks, filenames)
+        file_infos.extend([_copy_file_info(source_file_info, name) for name in filename_slices])
+    return SegmentationDataset.from_image_set(images, masks, filenames, file_infos=file_infos)
 
 def process_no_slice(data_subset):
     images = []
     masks = []
     filenames = []
+    file_infos = []
     
     for (img, mask), idx in zip(data_subset, data_subset.indices):
         img = img.unsqueeze(0) if img.dim() == 3 else img
@@ -103,15 +153,21 @@ def process_no_slice(data_subset):
         # Get the base filename for this image
         base_filename = data_subset.dataset.image_filenames[idx]
         filenames.append(base_filename)
+        source_file_infos = getattr(data_subset.dataset, "file_infos", None)
+        if source_file_infos and idx < len(source_file_infos):
+            file_infos.append(_copy_file_info(source_file_infos[idx], base_filename))
+        else:
+            file_infos.append(_get_dataset_file_info(data_subset.dataset, idx))
 
     # Create list of (image, mask) tensors
-    return SegmentationDataset.from_image_set(images, masks, filenames)
+    return SegmentationDataset.from_image_set(images, masks, filenames, file_infos=file_infos)
 
 # Helper to process val/test with mirror_fill and extract_slices
 def process_and_slice(data_subset, input_size=(256, 256)):
     images = []
     masks = []
     filenames = []
+    file_infos = []
     
     for (img, mask), idx in zip(data_subset, data_subset.indices):
         img = img.unsqueeze(0) if img.dim() == 3 else img
@@ -141,10 +197,16 @@ def process_and_slice(data_subset, input_size=(256, 256)):
             slice_filenames.append(slice_filename)
 
         filenames.extend(slice_filenames)
+        source_file_infos = getattr(data_subset.dataset, "file_infos", None)
+        if source_file_infos and idx < len(source_file_infos):
+            source_file_info = source_file_infos[idx]
+        else:
+            source_file_info = _get_dataset_file_info(data_subset.dataset, idx)
+        file_infos.extend([_copy_file_info(source_file_info, name) for name in slice_filenames])
 
 
     # Create list of (image, mask) tensors
-    return SegmentationDataset.from_image_set(images, masks, filenames)
+    return SegmentationDataset.from_image_set(images, masks, filenames, file_infos=file_infos)
 
 def log_data_split_info(dataset, train_data, val_data, test_data=None, log_file_path=None):
     """

@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Subset
 from src.model.SegmentationDataset import SegmentationDataset
 from src.model.UNet import UNet
 from src.model.ModelEvaluator import ModelEvaluator
-from src.model.DataTools import slice_dataset_in_four, process_and_slice, get_normalizer
+from src.model.DataTools import slice_dataset_in_four, get_normalizer
 from src.model.DataAugmenter import DataAugmenter
 from src.shared.ModelConfig import ModelConfig
 
@@ -65,16 +65,12 @@ class DataSizeExperiment:
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
         
-        # Load full dataset
+        # Load full dataset and split original images before any patching.
         dataset = SegmentationDataset(self.images_path, self.masks_path)
+        self.dataset = dataset
         print(f"Total images in dataset: {len(dataset)}")
-        
-        # Slice dataset into patches FIRST
-        dataset_sliced = slice_dataset_in_four(dataset, input_size)
-        print(f"Total patches after slicing: {len(dataset_sliced)}")
-        
-        # Get all indices from the SLICED dataset
-        total_size = len(dataset_sliced)
+
+        total_size = len(dataset)
         indices = list(range(total_size))
         np.random.shuffle(indices)
         
@@ -88,9 +84,9 @@ class DataSizeExperiment:
         val_indices = train_val_indices[:val_size]
         available_train_indices = train_val_indices[val_size:]
         
-        print(f"Test set size: {len(test_indices)} patches")
-        print(f"Validation set size: {len(val_indices)} patches")
-        print(f"Available training pool: {len(available_train_indices)} patches")
+        print(f"Test set size: {len(test_indices)} images")
+        print(f"Validation set size: {len(val_indices)} images")
+        print(f"Available training pool: {len(available_train_indices)} images")
         
         # Create training sets for each percentage
         self.data_splits = {}
@@ -106,9 +102,8 @@ class DataSizeExperiment:
                 'num_val': len(val_indices),
                 'num_test': len(test_indices)
             }
-            print(f"{int(percentage*100)}% training data: {num_train} patches")
-        
-        self.dataset_sliced = dataset_sliced
+            print(f"{int(percentage*100)}% training data: {num_train} images")
+
         self.test_indices = test_indices
         self.val_indices = val_indices
         
@@ -119,23 +114,23 @@ class DataSizeExperiment:
         """
         Create dataloaders for a specific data split.
         """
-        # Use the pre-sliced dataset
-        # Create subsets using indices from the sliced dataset
-        train_subset = Subset(self.dataset_sliced, train_indices)
-        val_subset = Subset(self.dataset_sliced, val_indices)
-        test_subset = Subset(self.dataset_sliced, test_indices)
+        # Split original images first, then expand each split into four patches.
+        train_subset = slice_dataset_in_four(Subset(self.dataset, train_indices), input_size)
+        val_subset = slice_dataset_in_four(Subset(self.dataset, val_indices), input_size)
+        test_subset = slice_dataset_in_four(Subset(self.dataset, test_indices), input_size)
         
         # Apply data augmentation to training set
         data_augmenter = DataAugmenter()
         if with_augmentation:
-            train_data = data_augmenter.augment_dataset(train_subset, input_size)
+            train_data = data_augmenter.augment_dataset(train_subset)
         else:
-            train_data = data_augmenter.augment_dataset(train_subset, input_size, 
-                                                       [False, False, False, False, False, False, False])
-        
-        # Process validation and test sets
-        val_data = process_and_slice(val_subset, input_size)
-        test_data = process_and_slice(test_subset, input_size)
+            train_data = data_augmenter.augment_dataset(
+                train_subset,
+                [False, False, False, False, False, False, False],
+            )
+
+        val_data = val_subset
+        test_data = test_subset
         
         # Create dataloaders
         train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
