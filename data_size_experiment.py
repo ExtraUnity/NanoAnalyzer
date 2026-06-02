@@ -24,7 +24,7 @@ from src.shared.ModelConfig import ModelConfig
 
 
 class DataSizeExperiment:
-    def __init__(self, images_path, masks_path, output_dir="data/experiments/data_size"):
+    def __init__(self, images_path, masks_path, output_dir="data/experiments/data_size", random_seed: int = 42):
         """
         Initialize the data size experiment.
         
@@ -37,7 +37,7 @@ class DataSizeExperiment:
         self.masks_path = masks_path
         self.output_dir = output_dir
         self.timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.random_seed = 42
+        self.random_seed = random_seed
         
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
@@ -83,7 +83,7 @@ class DataSizeExperiment:
 
         print(f"Split filenames saved to: {split_file}")
         
-    def prepare_data_splits(self, train_percentages, val_split=0.2, test_split=0.2, random_seed=42, input_size=(256, 256)):
+    def prepare_data_splits(self, train_percentages, val_split=0.2, test_split=0.2, input_size=(256, 256)):
         """
         Prepare data splits for the experiment.
         
@@ -94,13 +94,12 @@ class DataSizeExperiment:
             random_seed: Random seed for reproducibility
             input_size: Size for slicing the dataset into patches
         """
-        # Set random seed for reproducibility
-        self.random_seed = random_seed
-        random.seed(random_seed)
-        torch.manual_seed(random_seed)
+        # Set random seed for reproducibility (seed is set in constructor)
+        random.seed(self.random_seed)
+        torch.manual_seed(self.random_seed)
         if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(random_seed)
-        np.random.seed(random_seed)
+            torch.cuda.manual_seed_all(self.random_seed)
+        np.random.seed(self.random_seed)
         
         # Load full dataset and split original images before any patching.
         dataset = SegmentationDataset(self.images_path, self.masks_path)
@@ -309,7 +308,7 @@ class DataSizeExperiment:
     
     def run_experiment(self, train_percentages=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
                       epochs=50, learning_rate=0.0001, input_size=(256, 256), 
-                      with_augmentation=True, random_seed=42):
+                      with_augmentation=True):
         """
         Run the complete experiment with multiple training data sizes.
         """
@@ -323,10 +322,10 @@ class DataSizeExperiment:
         print(f"Epochs per model: {epochs}")
         print(f"Learning rate: {learning_rate}")
         print(f"Data augmentation: {with_augmentation}")
-        print(f"Random seed: {random_seed}")
-        
+        print(f"Random seed: {self.random_seed}")
+
         # Prepare data splits
-        self.prepare_data_splits(train_percentages, random_seed=random_seed, input_size=input_size)
+        self.prepare_data_splits(train_percentages, input_size=input_size)
         
         # Train models for each data size
         all_results = []
@@ -475,15 +474,14 @@ def main():
     with_augmentation = True
     random_seed = 42
     
-    # Create and run experiment
-    experiment = DataSizeExperiment(images_path, masks_path)
+    # Create and run experiment (set seed here)
+    experiment = DataSizeExperiment(images_path, masks_path, random_seed=random_seed)
     results = experiment.run_experiment(
         train_percentages=train_percentages,
         epochs=epochs,
         learning_rate=learning_rate,
         input_size=input_size,
-        with_augmentation=with_augmentation,
-        random_seed=random_seed
+        with_augmentation=with_augmentation
     )
     
     print("\n" + "="*80)
