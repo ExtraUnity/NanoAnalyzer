@@ -145,22 +145,30 @@ class DataSizeExperiment:
         print(f"Validation patch count: {len(self.val_patches)}")
         print(f"Test patch count: {len(self.test_patches)}")
         
-        # Create experiment configs per percentage (sampling happens on patch pool)
+        # Create a single deterministic shuffled ordering of the training patch pool
+        # Sampling for each percentage will use the first N patches from this ordering (nested prefixes).
+        import numpy as _np
+        rng = _np.random.default_rng(self.random_seed)
+        self.shuffled_train_patch_indices = rng.permutation(len(self.train_patch_pool)).tolist()
+
+        # Create experiment configs per percentage (use prefixes of the shuffled ordering)
         self.data_splits = {}
         for percentage in train_percentages:
             requested_num_train_patches = max(1, int(len(self.train_patch_pool) * percentage))
             requested_num_train_patches = min(requested_num_train_patches, len(self.train_patch_pool))
 
+            sampled_indices = self.shuffled_train_patch_indices[:requested_num_train_patches]
+
             self.data_splits[percentage] = {
                 'requested_num_train_patches': requested_num_train_patches,
+                'sampled_indices': sampled_indices,
                 'num_train_patches_pool': len(self.train_patch_pool),
                 'num_val_patches': len(self.val_patches),
                 'num_test_patches': len(self.test_patches)
             }
             print(
                 f"{int(percentage*100)}% training data requested: "
-                f"{requested_num_train_patches} patches "
-                f"(sampling from {len(self.train_patch_pool)} available training patches)"
+                f"{requested_num_train_patches} patches (prefix of shuffled pool of {len(self.train_patch_pool)})"
             )
 
         self.test_indices = test_indices
@@ -173,19 +181,25 @@ class DataSizeExperiment:
         Create dataloaders for a specific data split.
         """
 
-        # Sample patches from the precomputed training patch pool according to train_percentage
+        # Sample patches from the precomputed training patch pool using the nested prefix indices
         from torch.utils.data import Subset as TorchSubset
-        import numpy as _np
         percentage_seed = self.random_seed + int(train_percentage * 1000)
         total_patches = len(self.train_patch_pool)
-        desired_patches = max(1, int(total_patches * train_percentage))
-        desired_patches = min(desired_patches, total_patches)
-        if desired_patches >= total_patches:
+
+        split_info = self.data_splits.get(train_percentage, None)
+        if split_info is None:
+            # Fallback: compute desired count and use prefix of shuffled order
+            import numpy as _np
+            desired_patches = max(1, int(total_patches * train_percentage))
+            desired_patches = min(desired_patches, total_patches)
+            sampled_indices = self.shuffled_train_patch_indices[:desired_patches]
+        else:
+            sampled_indices = split_info.get('sampled_indices', None)
+
+        if sampled_indices is None or len(sampled_indices) >= total_patches:
             sampled_train_subset = self.train_patch_pool
         else:
-            rng = _np.random.default_rng(percentage_seed)
-            sampled_indices = rng.choice(total_patches, size=desired_patches, replace=False)
-            sampled_train_subset = TorchSubset(self.train_patch_pool, sampled_indices.tolist())
+            sampled_train_subset = TorchSubset(self.train_patch_pool, sampled_indices)
 
         # Apply data augmentation to the sampled training patches
         data_augmenter = DataAugmenter()
