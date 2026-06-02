@@ -51,6 +51,37 @@ class DataSizeExperiment:
             'std_dice': [],
             'training_times': []
         }
+
+    def _log_split_filenames(self, train_indices, val_indices, test_indices):
+        """Write train/validation/test split filenames to a timestamped text file."""
+        split_file = os.path.join(self.output_dir, f"split_filenames_{self.timestamp}.txt")
+
+        train_files = [self.dataset.image_filenames[i] for i in train_indices]
+        val_files = [self.dataset.image_filenames[i] for i in val_indices]
+        test_files = [self.dataset.image_filenames[i] for i in test_indices]
+
+        with open(split_file, "w", encoding="utf-8") as f:
+            f.write("=" * 80 + "\n")
+            f.write("DATA SIZE EXPERIMENT - IMAGE SPLITS\n")
+            f.write("=" * 80 + "\n")
+            f.write(f"Timestamp: {self.timestamp}\n")
+            f.write(f"Random seed: {self.random_seed}\n")
+            f.write(f"Images path: {self.images_path}\n")
+            f.write(f"Masks path: {self.masks_path}\n\n")
+
+            f.write(f"Training files ({len(train_files)}):\n")
+            for name in train_files:
+                f.write(f"  {name}\n")
+
+            f.write(f"\nValidation files ({len(val_files)}):\n")
+            for name in val_files:
+                f.write(f"  {name}\n")
+
+            f.write(f"\nTest files ({len(test_files)}):\n")
+            for name in test_files:
+                f.write(f"  {name}\n")
+
+        print(f"Split filenames saved to: {split_file}")
         
     def prepare_data_splits(self, train_percentages, val_split=0.2, test_split=0.2, random_seed=42, input_size=(256, 256)):
         """
@@ -93,6 +124,9 @@ class DataSizeExperiment:
         print(f"Test set size: {len(test_indices)} images")
         print(f"Validation set size: {len(val_indices)} images")
         print(f"Available training pool: {len(available_train_indices)} images")
+
+        # Persist the exact image-level split used for this experiment run.
+        self._log_split_filenames(available_train_indices, val_indices, test_indices)
 
         # Build patch datasets immediately after image-level split.
         # From this point forward, training/validation/testing operate on patches only.
