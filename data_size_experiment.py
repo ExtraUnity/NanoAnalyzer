@@ -186,7 +186,6 @@ class DataSizeExperiment:
             epochs=epochs,
             learningRate=learning_rate,
             model_name=model_name,
-            cross_validation="holdout",
             with_early_stopping=True,
             loss_function="combined",
             scheduler_type="none"
