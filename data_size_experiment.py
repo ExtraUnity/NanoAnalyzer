@@ -10,6 +10,7 @@ Training increments: 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%, 90%
 
 import os
 import datetime
+import random
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -36,6 +37,7 @@ class DataSizeExperiment:
         self.masks_path = masks_path
         self.output_dir = output_dir
         self.timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.random_seed = 42
         
         # Create output directory
         os.makedirs(output_dir, exist_ok=True)
@@ -62,7 +64,11 @@ class DataSizeExperiment:
             input_size: Size for slicing the dataset into patches
         """
         # Set random seed for reproducibility
+        self.random_seed = random_seed
+        random.seed(random_seed)
         torch.manual_seed(random_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(random_seed)
         np.random.seed(random_seed)
         
         # Load full dataset and split original images before any patching.
@@ -137,13 +143,14 @@ class DataSizeExperiment:
         # Sample patches from the precomputed training patch pool according to train_percentage
         from torch.utils.data import Subset as TorchSubset
         import numpy as _np
+        percentage_seed = self.random_seed + int(train_percentage * 1000)
         total_patches = len(self.train_patch_pool)
         desired_patches = max(1, int(total_patches * train_percentage))
         desired_patches = min(desired_patches, total_patches)
         if desired_patches >= total_patches:
             sampled_train_subset = self.train_patch_pool
         else:
-            rng = _np.random.default_rng()
+            rng = _np.random.default_rng(percentage_seed)
             sampled_indices = rng.choice(total_patches, size=desired_patches, replace=False)
             sampled_train_subset = TorchSubset(self.train_patch_pool, sampled_indices.tolist())
 
@@ -161,7 +168,14 @@ class DataSizeExperiment:
         test_data = self.test_patches
 
         # Create dataloaders
-        train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
+        dataloader_generator = torch.Generator().manual_seed(percentage_seed)
+        train_dataloader = DataLoader(
+            train_data,
+            batch_size=batch_size,
+            shuffle=True,
+            drop_last=True,
+            generator=dataloader_generator,
+        )
         val_dataloader = DataLoader(val_data, batch_size=1, shuffle=False)
         test_dataloader = DataLoader(test_data, batch_size=1, shuffle=False)
 
@@ -177,6 +191,14 @@ class DataSizeExperiment:
         print(f"\n{'='*80}")
         print(f"Training with {int(train_percentage*100)}% of training data")
         print(f"{'='*80}")
+
+        # Per-percentage deterministic seed for training, augmentation, and sampling order
+        run_seed = self.random_seed + int(train_percentage * 1000)
+        random.seed(run_seed)
+        np.random.seed(run_seed)
+        torch.manual_seed(run_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(run_seed)
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {device}")
