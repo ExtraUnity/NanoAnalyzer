@@ -52,7 +52,8 @@ if __name__ == "__main__":
     experiment = DataSizeExperiment(
         images_path=IMAGES_PATH,
         masks_path=MASKS_PATH,
-        output_dir=OUTPUT_DIR
+        output_dir=OUTPUT_DIR,
+        random_seed=RANDOM_SEED
     )
     
     # Run experiment
@@ -62,8 +63,10 @@ if __name__ == "__main__":
         learning_rate=LEARNING_RATE,
         input_size=INPUT_SIZE,
         with_augmentation=WITH_AUGMENTATION,
-        random_seed=RANDOM_SEED
     )
+
+    # If you want to control the seed, pass it when constructing the experiment
+    # (updated API: seed is now set in DataSizeExperiment constructor)
     
     print("\n" + "="*80)
     print("EXPERIMENT COMPLETED SUCCESSFULLY!")
