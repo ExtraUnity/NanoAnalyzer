@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, Subset
 from src.model.SegmentationDataset import SegmentationDataset
 from src.model.UNet import UNet
 from src.model.ModelEvaluator import ModelEvaluator
-from src.model.DataTools import slice_dataset_in_four, get_normalizer
+from src.model.DataTools import slice_dataset_in_four, get_normalizer, process_and_slice
 from src.model.DataAugmenter import DataAugmenter
 from src.shared.ModelConfig import ModelConfig
 
@@ -114,27 +114,32 @@ class DataSizeExperiment:
         """
         Create dataloaders for a specific data split.
         """
-        # Split original images first, then expand each split into four patches.
-        train_subset = slice_dataset_in_four(Subset(self.dataset, train_indices), input_size)
-        val_subset = slice_dataset_in_four(Subset(self.dataset, val_indices), input_size)
-        test_subset = slice_dataset_in_four(Subset(self.dataset, test_indices), input_size)
 
-        # Sample patches from the training subset according to train_percentage (patch-based masking)
-        import numpy as _np
+        # Split original images into 4 quadrants first (image-level -> 4 patches per image)
+        train_quadrants = slice_dataset_in_four(Subset(self.dataset, train_indices), input_size)
+        val_quadrants = slice_dataset_in_four(Subset(self.dataset, val_indices), input_size)
+        test_quadrants = slice_dataset_in_four(Subset(self.dataset, test_indices), input_size)
+
+        # For each quadrant, ensure patches match the model input size (mirror_fill + extract_slices)
         from torch.utils.data import Subset as TorchSubset
+        train_patches = process_and_slice(TorchSubset(train_quadrants, list(range(len(train_quadrants)))), input_size)
+        val_patches = process_and_slice(TorchSubset(val_quadrants, list(range(len(val_quadrants)))), input_size)
+        test_patches = process_and_slice(TorchSubset(test_quadrants, list(range(len(test_quadrants)))), input_size)
 
-        total_patches = len(train_subset)
+        # Sample patches from the training patches dataset according to train_percentage (patch-based masking)
+        import numpy as _np
+        total_patches = len(train_patches)
         if train_percentage is None:
-            sampled_train_subset = train_subset
+            sampled_train_subset = train_patches
         else:
             desired_patches = max(1, int(total_patches * train_percentage))
             desired_patches = min(desired_patches, total_patches)
             if desired_patches >= total_patches:
-                sampled_train_subset = train_subset
+                sampled_train_subset = train_patches
             else:
                 rng = _np.random.default_rng()
                 sampled_indices = rng.choice(total_patches, size=desired_patches, replace=False)
-                sampled_train_subset = TorchSubset(train_subset, sampled_indices.tolist())
+                sampled_train_subset = TorchSubset(train_patches, sampled_indices.tolist())
 
         # Apply data augmentation to the sampled training patches
         data_augmenter = DataAugmenter()
@@ -146,8 +151,8 @@ class DataSizeExperiment:
                 [False, False, False, False, False, False, False],
             )
 
-        val_data = val_subset
-        test_data = test_subset
+        val_data = val_patches
+        test_data = test_patches
 
         # Create dataloaders
         train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True, drop_last=True)
