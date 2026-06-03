@@ -11,6 +11,7 @@ from src.model.ParticleMetrics import (
     match_particles,
     save_size_stratified_metrics,
 )
+from src.shared.EvaluationResult import EvaluationResult
 
 
 class ParticleMetricsTests(unittest.TestCase):
@@ -125,6 +126,32 @@ class ParticleMetricsTests(unittest.TestCase):
         self.assertAlmostEqual(all_gt["mean_absolute_ecd_error_px"], abs(expected_error_px))
         self.assertAlmostEqual(all_gt["mean_relative_ecd_error"], 1.0 / 3.0)
         self.assertAlmostEqual(all_gt["mean_absolute_relative_ecd_error"], 1.0 / 3.0)
+
+    def test_evaluation_result_exposes_overall_size_summary(self):
+        gt = np.zeros((12, 12), dtype=np.uint8)
+        gt[1:4, 1:4] = 1
+
+        pred = np.zeros_like(gt)
+        pred[1:5, 1:5] = 1
+
+        size_result = compute_size_stratified_metrics(
+            ground_truths=[gt],
+            predictions=[pred],
+            bin_edges=[0.0, 10.0],
+            bin_labels=["all"],
+        )
+        evaluation_result = EvaluationResult(
+            [9.0 / 16.0],
+            [0.72],
+            [1.0],
+            [1.0],
+            size_stratified_metrics=size_result,
+        )
+
+        self.assertAlmostEqual(evaluation_result.object_precision, 1.0)
+        self.assertAlmostEqual(evaluation_result.object_recall, 1.0)
+        self.assertAlmostEqual(evaluation_result.mean_relative_ecd_error, 1.0 / 3.0)
+        self.assertAlmostEqual(evaluation_result.mean_absolute_relative_ecd_error, 1.0 / 3.0)
 
     def test_confusion_matrix_artifacts_are_saved(self):
         gt = np.zeros((12, 12), dtype=np.uint8)

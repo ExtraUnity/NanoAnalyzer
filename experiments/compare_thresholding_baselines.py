@@ -31,6 +31,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.model.ParticleMetrics import compute_size_stratified_metrics
 
 
+AUTO_FOREGROUND_MEDIAN_THRESHOLD = 63.0
+FOREGROUND_OPTIONS = ("auto", "bright", "dark")
+
+
 @dataclass(frozen=True)
 class BaselineConfig:
     name: str
@@ -55,6 +59,31 @@ def ensure_binary_mask(mask: np.ndarray) -> np.ndarray:
     if mask.ndim != 2:
         raise ValueError(f"Expected a 2D mask, got shape {mask.shape}.")
     return (mask > 0).astype(np.uint8)
+
+
+def image_median_intensity(image: np.ndarray) -> float:
+    """Return the median grayscale intensity used for image-level polarity detection."""
+    return float(np.median(np.asarray(image, dtype=np.uint8)))
+
+
+def infer_foreground_from_image(
+    image: np.ndarray,
+    median_threshold: float = AUTO_FOREGROUND_MEDIAN_THRESHOLD,
+) -> str:
+    """Infer whether particles are brighter or darker than the background from image intensity."""
+    return "bright" if image_median_intensity(image) <= median_threshold else "dark"
+
+
+def resolve_foreground(
+    image: np.ndarray,
+    foreground: str,
+    median_threshold: float = AUTO_FOREGROUND_MEDIAN_THRESHOLD,
+) -> str:
+    if foreground == "auto":
+        return infer_foreground_from_image(image, median_threshold)
+    if foreground in ("bright", "dark"):
+        return foreground
+    raise ValueError(f"Unknown foreground mode: {foreground}")
 
 
 def load_dataset_arrays(images_dir: str, masks_dir: str) -> tuple[list[np.ndarray], list[np.ndarray], list[str]]:
@@ -185,7 +214,13 @@ def apply_morphological_postprocessing(mask: np.ndarray, config: BaselineConfig)
         return output
 
 
-def run_baseline(image: np.ndarray, foreground: str, config: BaselineConfig) -> np.ndarray:
+def run_baseline(
+    image: np.ndarray,
+    foreground: str,
+    config: BaselineConfig,
+    auto_foreground_median_threshold: float = AUTO_FOREGROUND_MEDIAN_THRESHOLD,
+) -> np.ndarray:
+    foreground = resolve_foreground(image, foreground, auto_foreground_median_threshold)
     if config.threshold == "otsu":
         mask = run_otsu_baseline(image, foreground, config)
     elif config.threshold == "adaptive":
@@ -349,6 +384,7 @@ def tune_baseline_parameters(
     masks: list[np.ndarray],
     foreground: str,
     base_configs: list[BaselineConfig],
+    auto_foreground_median_threshold: float = AUTO_FOREGROUND_MEDIAN_THRESHOLD,
 ) -> list[BaselineConfig]:
     """Tune a small parameter grid on validation data using mean pixel IoU."""
     tuned_configs: list[BaselineConfig] = []
@@ -381,7 +417,10 @@ def tune_baseline_parameters(
         best_config = base_config
         best_score = -1.0
         for candidate in candidates:
-            predictions = [run_baseline(image, foreground, candidate) for image in images]
+            predictions = [
+                run_baseline(image, foreground, candidate, auto_foreground_median_threshold)
+                for image in images
+            ]
             mean_iou = float(np.mean([compute_pixel_metrics(pred, gt)["iou"] for pred, gt in zip(predictions, masks)]))
             if mean_iou > best_score:
                 best_score = mean_iou
@@ -472,6 +511,27 @@ def write_csv(path: str, rows: list[dict]) -> None:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
+
+
+def build_foreground_rows(
+    images: list[np.ndarray],
+    file_names: list[str],
+    foreground: str,
+    auto_foreground_median_threshold: float,
+) -> list[dict]:
+    rows = []
+    for image, file_name in zip(images, file_names):
+        median_intensity = image_median_intensity(image)
+        rows.append(
+            {
+                "file_name": file_name,
+                "foreground_mode": foreground,
+                "resolved_foreground": resolve_foreground(image, foreground, auto_foreground_median_threshold),
+                "image_median_intensity": median_intensity,
+                "auto_foreground_median_threshold": auto_foreground_median_threshold if foreground == "auto" else "",
+            }
+        )
+    return rows
 
 
 def save_plots(output_dir: str, aggregate_rows: list[dict]) -> None:
@@ -582,7 +642,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--validation-images-dir", default=None, help="Optional validation images for tuning baselines.")
     parser.add_argument("--validation-masks-dir", default=None, help="Optional validation masks for tuning baselines.")
     parser.add_argument("--output-dir", default=None)
-    parser.add_argument("--foreground", choices=["bright", "dark"], default="bright")
+    parser.add_argument(
+        "--foreground",
+        choices=FOREGROUND_OPTIONS,
+        default="auto",
+        help=(
+            "Particle polarity. 'auto' uses the image median intensity; images at or below "
+            "the median threshold are treated as bright particles on a dark background."
+        ),
+    )
+    parser.add_argument(
+        "--auto-foreground-median-threshold",
+        type=float,
+        default=AUTO_FOREGROUND_MEDIAN_THRESHOLD,
+        help=(
+            "Image median cutoff for --foreground auto. The default 63.0 is the midpoint between "
+            "the observed STEM_images median range (0-24, bright particles) and medres_images "
+            "median range (102-172, dark particles)."
+        ),
+    )
     parser.add_argument("--object-iou-threshold", type=float, default=0.3)
     parser.add_argument("--num-examples", type=int, default=3)
     parser.add_argument("--watershed", action="store_true", help="Enable watershed in morphology baselines.")
@@ -606,12 +684,21 @@ def main() -> None:
     tuning_used = False
     if args.validation_images_dir and args.validation_masks_dir:
         validation_images, validation_masks, _ = load_dataset_arrays(args.validation_images_dir, args.validation_masks_dir)
-        baseline_configs = tune_baseline_parameters(validation_images, validation_masks, args.foreground, baseline_configs)
+        baseline_configs = tune_baseline_parameters(
+            validation_images,
+            validation_masks,
+            args.foreground,
+            baseline_configs,
+            args.auto_foreground_median_threshold,
+        )
         tuning_used = True
 
     predictions_by_method: dict[str, list[np.ndarray]] = {}
     for config in baseline_configs:
-        predictions_by_method[config.name] = [run_baseline(image, args.foreground, config) for image in images]
+        predictions_by_method[config.name] = [
+            run_baseline(image, args.foreground, config, args.auto_foreground_median_threshold)
+            for image in images
+        ]
 
     if args.unet_predictions_dir:
         predictions_by_method["unet"] = load_prediction_masks(args.unet_predictions_dir, file_names)
@@ -637,9 +724,21 @@ def main() -> None:
     write_csv(os.path.join(output_dir, "baseline_comparison_metrics.csv"), aggregate_rows)
     write_csv(os.path.join(output_dir, "baseline_comparison_per_image.csv"), per_image_rows)
     write_csv(os.path.join(output_dir, "baseline_comparison_size_stratified.csv"), size_rows)
+    foreground_rows = build_foreground_rows(
+        images,
+        file_names,
+        args.foreground,
+        args.auto_foreground_median_threshold,
+    )
+    write_csv(os.path.join(output_dir, "baseline_foreground_polarity.csv"), foreground_rows)
 
     parameters = {
         "foreground": args.foreground,
+        "auto_foreground_median_threshold": args.auto_foreground_median_threshold,
+        "resolved_foreground_counts": {
+            foreground: sum(1 for row in foreground_rows if row["resolved_foreground"] == foreground)
+            for foreground in ("bright", "dark")
+        },
         "object_iou_threshold": args.object_iou_threshold,
         "parameter_tuning": "validation_grid_search" if tuning_used else "documented_defaults",
         "baselines": {config.name: config_to_dict(config) for config in baseline_configs},

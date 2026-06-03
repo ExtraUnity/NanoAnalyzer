@@ -5,10 +5,12 @@ import unittest
 import numpy as np
 
 from experiments.compare_thresholding_baselines import (
+    AUTO_FOREGROUND_MEDIAN_THRESHOLD,
     BaselineConfig,
     compute_pixel_metrics,
     ensure_binary_mask,
     evaluate_method_on_dataset,
+    infer_foreground_from_image,
     run_baseline,
     write_csv,
 )
@@ -24,6 +26,26 @@ class ThresholdingBaselineTests(unittest.TestCase):
         self.assertEqual(prediction.shape, image.shape)
         self.assertTrue(np.isin(prediction, [0, 1]).all())
         self.assertGreater(prediction.sum(), 0)
+
+    def test_auto_foreground_infers_polarity_from_image_median(self):
+        bright_particles = np.zeros((16, 16), dtype=np.uint8)
+        bright_particles[4:8, 4:8] = 220
+        dark_particles = np.full((16, 16), 140, dtype=np.uint8)
+        dark_particles[4:8, 4:8] = 20
+
+        self.assertEqual(infer_foreground_from_image(bright_particles), "bright")
+        self.assertEqual(infer_foreground_from_image(dark_particles), "dark")
+        self.assertEqual(AUTO_FOREGROUND_MEDIAN_THRESHOLD, 63.0)
+
+    def test_auto_foreground_runs_baseline_for_dark_particles(self):
+        image = np.full((32, 32), 140, dtype=np.uint8)
+        image[10:20, 10:20] = 20
+
+        prediction = run_baseline(image, "auto", BaselineConfig(name="adaptive", threshold="adaptive"))
+
+        self.assertEqual(prediction.shape, image.shape)
+        self.assertTrue(np.isin(prediction, [0, 1]).all())
+        self.assertGreater(prediction[10:20, 10:20].sum(), 0)
 
     def test_empty_masks_do_not_crash_metrics(self):
         prediction = np.zeros((16, 16), dtype=np.uint8)
