@@ -26,9 +26,12 @@ def _copy_file_info(file_info, file_name=None):
 
 
 def _get_dataset_file_info(dataset, index):
+    dataset, index = _resolve_dataset_source(dataset, index)
     file_infos = getattr(dataset, "file_infos", None)
     if file_infos and index < len(file_infos):
-        return _copy_file_info(file_infos[index], dataset.image_filenames[index])
+        image_filenames = getattr(dataset, "image_filenames", None)
+        file_name = image_filenames[index] if image_filenames and index < len(image_filenames) else None
+        return _copy_file_info(file_infos[index], file_name)
 
     image_dir = getattr(dataset, "image_dir", None)
     image_filenames = getattr(dataset, "image_filenames", None)
@@ -44,8 +47,12 @@ def _get_dataset_file_info(dataset, index):
         return None
 
 def _resolve_dataset_source(dataset, index):
-    if hasattr(dataset, "indices") and hasattr(dataset, "dataset"):
-        return dataset.dataset, dataset.indices[index]
+    while hasattr(dataset, "indices") and hasattr(dataset, "dataset"):
+        index = dataset.indices[index]
+        if hasattr(index, "item"):
+            index = index.item()
+        index = int(index)
+        dataset = dataset.dataset
     return dataset, index
 
 def _get_dataset_filename(dataset, index):
@@ -99,11 +106,10 @@ def slice_dataset_in_four(dataset, input_size=(256, 256)):
     filenames = []
     file_infos = []
     for index, (img, mask) in enumerate(dataset):
-        source_dataset, source_index = _resolve_dataset_source(dataset, index)
         filename = _get_dataset_filename(dataset, index)
         width = img.shape[-1]
         height = img.shape[-2]
-        source_file_info = _get_dataset_file_info(source_dataset, source_index)
+        source_file_info = _get_dataset_file_info(dataset, index)
         if width <= input_size[0] or height <= input_size[1]:
             images.append(img)
             masks.append(mask)
@@ -143,21 +149,16 @@ def process_no_slice(data_subset):
     filenames = []
     file_infos = []
     
-    for (img, mask), idx in zip(data_subset, data_subset.indices):
+    for index, (img, mask) in enumerate(data_subset):
         img = img.unsqueeze(0) if img.dim() == 3 else img
         mask = mask.unsqueeze(0) if mask.dim() == 3 else mask
 
         images.extend(img)
         masks.extend(mask)
         
-        # Get the base filename for this image
-        base_filename = data_subset.dataset.image_filenames[idx]
+        base_filename = _get_dataset_filename(data_subset, index)
         filenames.append(base_filename)
-        source_file_infos = getattr(data_subset.dataset, "file_infos", None)
-        if source_file_infos and idx < len(source_file_infos):
-            file_infos.append(_copy_file_info(source_file_infos[idx], base_filename))
-        else:
-            file_infos.append(_get_dataset_file_info(data_subset.dataset, idx))
+        file_infos.append(_copy_file_info(_get_dataset_file_info(data_subset, index), base_filename))
 
     # Create list of (image, mask) tensors
     return SegmentationDataset.from_image_set(images, masks, filenames, file_infos=file_infos)
@@ -169,7 +170,7 @@ def process_and_slice(data_subset, input_size=(256, 256)):
     filenames = []
     file_infos = []
     
-    for (img, mask), idx in zip(data_subset, data_subset.indices):
+    for index, (img, mask) in enumerate(data_subset):
         img = img.unsqueeze(0) if img.dim() == 3 else img
         mask = mask.unsqueeze(0) if mask.dim() == 3 else mask
 
@@ -186,8 +187,7 @@ def process_and_slice(data_subset, input_size=(256, 256)):
         images.extend(sliced_images)
         masks.extend(sliced_masks)
         
-        # Get the base filename for this image
-        base_filename = data_subset.dataset.image_filenames[idx]
+        base_filename = _get_dataset_filename(data_subset, index)
         
         # Convert tensors to list and add to results
         num_slices = len(sliced_images)
@@ -197,11 +197,7 @@ def process_and_slice(data_subset, input_size=(256, 256)):
             slice_filenames.append(slice_filename)
 
         filenames.extend(slice_filenames)
-        source_file_infos = getattr(data_subset.dataset, "file_infos", None)
-        if source_file_infos and idx < len(source_file_infos):
-            source_file_info = source_file_infos[idx]
-        else:
-            source_file_info = _get_dataset_file_info(data_subset.dataset, idx)
+        source_file_info = _get_dataset_file_info(data_subset, index)
         file_infos.extend([_copy_file_info(source_file_info, name) for name in slice_filenames])
 
 
@@ -221,9 +217,9 @@ def log_data_split_info(dataset, train_data, val_data, test_data=None, log_file_
     """
     if log_file_path is None:
         return
-    train_filenames = sorted([dataset.image_filenames[i] for i in train_data.indices])
-    val_filenames = sorted([dataset.image_filenames[i] for i in val_data.indices])
-    test_filenames = sorted([dataset.image_filenames[i] for i in test_data.indices]) if test_data is not None else None
+    train_filenames = sorted([_get_dataset_filename(train_data, i) for i in range(len(train_data))])
+    val_filenames = sorted([_get_dataset_filename(val_data, i) for i in range(len(val_data))])
+    test_filenames = sorted([_get_dataset_filename(test_data, i) for i in range(len(test_data))]) if test_data is not None else None
 
 
     import os
@@ -254,8 +250,6 @@ def log_data_split_info(dataset, train_data, val_data, test_data=None, log_file_
     print(f"Data split information logged to: {split_log_path}")
 
 def get_dataloaders(dataset: Dataset, model_config: ModelConfig, input_size: tuple[int, int], log_file_path = None) -> tuple[DataLoader, DataLoader, DataLoader]:
-    # Set parameters:
-    dataset = slice_dataset_in_four(dataset, input_size)
     train_data, val_data, test_data = get_data_splits(dataset, model_config, input_size, log_file_path)    
     
     if torch.cuda.is_available():
@@ -273,6 +267,9 @@ def get_dataloaders(dataset: Dataset, model_config: ModelConfig, input_size: tup
 def get_data_splits(dataset, model_config, input_size, log_file_path=None):
     train_data, val_data, test_data = split_dataset(dataset, model_config)
     log_data_split_info(dataset, train_data, val_data, test_data, log_file_path)
+    train_data = slice_dataset_in_four(train_data, input_size)
+    val_data = slice_dataset_in_four(val_data, input_size)
+    test_data = slice_dataset_in_four(test_data, input_size)
 
     # Augment training data
     data_augmenter = DataAugmenter()

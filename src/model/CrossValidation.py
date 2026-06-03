@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader, random_split
 from src.model.SegmentationDataset import SegmentationDataset
 from src.model.PlottingTools import *
-from src.model.DataTools import get_dataloaders, get_dataloaders_kfold_already_split, process_and_slice, slice_dataset_in_four, get_normalizer
+from src.model.DataTools import get_dataloaders, get_dataloaders_kfold_already_split, process_and_slice, process_no_slice, slice_dataset_in_four, get_normalizer
 from src.model.ModelEvaluator import ModelEvaluator
 from src.shared.ModelConfig import ModelConfig
 from src.shared.EvaluationResult import EvaluationResult
@@ -56,9 +56,7 @@ def cv_kfold(images_path, masks_path):
 
     # Load data
     dataset = SegmentationDataset(images_path, masks_path)
-    dataset = slice_dataset_in_four(dataset)
     dataset_size = len(dataset)
-    sliced_dataset_size = len(process_and_slice(dataset))
     from sklearn.model_selection import KFold
     cv = KFold(n_splits=K, shuffle=True)
 
@@ -75,7 +73,8 @@ def cv_kfold(images_path, masks_path):
         test_losses = fold_results[s]["test_losses"]
         test_ious = fold_results[s]["test_ious"]
         test_dice_scores = fold_results[s]["test_dice_scores"]
-        gen_error_estimate_loss = sum(test_size * test_loss for test_size, test_loss in zip(test_sizes, test_losses)) / sliced_dataset_size
+        total_test_size = sum(test_sizes)
+        gen_error_estimate_loss = sum(test_size * test_loss for test_size, test_loss in zip(test_sizes, test_losses)) / total_test_size
         gen_error_estimate_iou = np.mean(test_ious)
         gen_error_estimate_dice = np.mean(test_dice_scores)
         E_gen_loss_s.append(gen_error_estimate_loss)
@@ -92,8 +91,13 @@ def inner_fold(idx, K2, par_split, parameters, epochs, train_idx, test_idx, test
     print(f"\n ------------ Inner Fold {idx+1}/{K2} -------------") 
     train_split = Subset(par_split, train_idx.tolist())
     inner_test_data = Subset(par_split, test_idx.tolist())
-    train_data, val_data = random_split(train_split, [0.8, 0.2])
-    inner_test_data = process_and_slice(inner_test_data)
+    train_data, val_data = _split_train_validation(train_split)
+    train_data = slice_dataset_in_four(train_data)
+    val_data = slice_dataset_in_four(val_data)
+    inner_test_data = slice_dataset_in_four(inner_test_data)
+    inner_test_loss_data = process_and_slice(inner_test_data)
+    inner_test_data = process_no_slice(inner_test_data)
+    inner_test_loss_dataloader = DataLoader(inner_test_loss_data, batch_size=1, shuffle=False)
     inner_test_dataloader = DataLoader(inner_test_data, batch_size=1, shuffle=False)
     from src.model.UNet import UNet
 
@@ -121,11 +125,11 @@ def inner_fold(idx, K2, par_split, parameters, epochs, train_idx, test_idx, test
             scheduler_type=scheduler  # Add scheduler type
         )
 
-        test_loss = unet.get_validation_loss(inner_test_dataloader)
+        test_loss = unet.get_validation_loss(inner_test_loss_dataloader)
         from src.model.PlottingTools import plot_difference
         test_iou, test_dice = ModelEvaluator.evaluate_model(unet, inner_test_dataloader)
 
-        test_results[s]["test_sizes"].append(len(inner_test_data))
+        test_results[s]["test_sizes"].append(len(inner_test_loss_data))
         test_results[s]["test_losses"].append(test_loss)
         test_results[s]["test_ious"].append(test_iou)
         test_results[s]["test_dice_scores"].append(test_dice)
@@ -134,6 +138,12 @@ def inner_fold(idx, K2, par_split, parameters, epochs, train_idx, test_idx, test
             f.write(f"Model {s} in fold {idx}\n")
             f.write(f"Mean IOU: {test_iou}\n")
             f.write(f"Mean Dice: {test_dice}")
+
+def _split_train_validation(train_split, validation_fraction=0.2):
+    validation_size = max(1, round(len(train_split) * validation_fraction))
+    validation_size = min(validation_size, len(train_split) - 1)
+    train_size = len(train_split) - validation_size
+    return random_split(train_split, [train_size, validation_size])
 
 def log_inner_fold_results(idx, parameters, inner_test_results, S):
     results_dir = "cv_loss_functions_logs"
