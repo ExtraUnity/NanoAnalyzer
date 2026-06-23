@@ -65,7 +65,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super().__init__()
         self.MainWindow = QMainWindow()
         self.setupUi(self.MainWindow)
-        preloaded_model_name = "UNet_best_16-10.pt"
+        preloaded_model_name = "UNet_20-06.pt"
         self.current_model_label.setText(f"{preloaded_model_name}")
         self.controller = Controller(preloaded_model_name)
         self.image_path = None
@@ -342,25 +342,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         dialog = QDialog()
         dialog.setWindowTitle("Model Evaluation Metrics")
-        dialog.resize(460, 650)  # width, height
+        dialog.resize(460, 500)  # width, height
 
         layout = QVBoxLayout()
         label = QLabel(f"<h3>Mean IoU:</h3> {format_metric(evaluation_result.mean_iou)}<br>"
-                       f"<h3>Mean Dice Score:</h3> {format_metric(evaluation_result.mean_dice)}<br>"
-                       f"<h3>Mean Precision:</h3> {format_metric(getattr(evaluation_result, 'mean_precision', None))}<br>"
-                       f"<h3>Mean Recall:</h3> {format_metric(getattr(evaluation_result, 'mean_recall', None))}<hr>"
+                       f"<h3>Mean Dice Score:</h3> {format_metric(evaluation_result.mean_dice)}<hr>"
                        f"<h3>Object Precision:</h3> {format_metric(getattr(evaluation_result, 'object_precision', None))}<br>"
                        f"<h3>Object Recall:</h3> {format_metric(getattr(evaluation_result, 'object_recall', None))}<br>"
-                       f"<h3>Mean Relative ECD Error:</h3> {format_metric(getattr(evaluation_result, 'mean_relative_ecd_error', None))}<br>"
                        f"<h3>Mean Absolute Relative ECD Error:</h3> {format_metric(getattr(evaluation_result, 'mean_absolute_relative_ecd_error', None))}<hr>"
                        f"<h3>Min IoU:</h3> {format_metric(evaluation_result.min_iou)}<br>"
-                       f"<h3>Min Dice Score:</h3> {format_metric(evaluation_result.min_dice)}<br>"
-                       f"<h3>Min Precision:</h3> {format_metric(getattr(evaluation_result, 'min_precision', None))}<br>"
-                       f"<h3>Min Recall:</h3> {format_metric(getattr(evaluation_result, 'min_recall', None))}<hr>"
+                       f"<h3>Min Dice Score:</h3> {format_metric(evaluation_result.min_dice)}<hr>"
                        f"<h3>Max IoU:</h3> {format_metric(evaluation_result.max_iou)}<br>"
-                       f"<h3>Max Dice Score:</h3> {format_metric(evaluation_result.max_dice)}<br>"
-                       f"<h3>Max Precision:</h3> {format_metric(getattr(evaluation_result, 'max_precision', None))}<br>"
-                       f"<h3>Max Recall:</h3> {format_metric(getattr(evaluation_result, 'max_recall', None))}<hr>"
+                       f"<h3>Max Dice Score:</h3> {format_metric(evaluation_result.max_dice)}<hr>"
                        f"<h3>Tested on:</h3> {len(evaluation_result)} samples"
                        )
         label.setWordWrap(True)

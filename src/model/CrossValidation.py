@@ -68,11 +68,8 @@ def cv_kfold(images_path, masks_path):
             "test_losses": [],
             "test_ious": [],
             "test_dice_scores": [],
-            "test_precision_scores": [],
-            "test_recall_scores": [],
             "object_precisions": [],
             "object_recalls": [],
-            "mean_relative_ecd_errors": [],
             "mean_absolute_relative_ecd_errors": [],
             "size_stratified_rows": [],
             "size_stratified_paths": [],
@@ -160,11 +157,8 @@ def inner_fold(idx, K2, par_split, parameters, epochs, train_idx, test_idx, test
         test_results[s]["test_losses"].append(test_loss)
         test_results[s]["test_ious"].append(evaluation_result.mean_iou)
         test_results[s]["test_dice_scores"].append(evaluation_result.mean_dice)
-        test_results[s]["test_precision_scores"].append(evaluation_result.mean_precision)
-        test_results[s]["test_recall_scores"].append(evaluation_result.mean_recall)
         test_results[s]["object_precisions"].append(size_summary["precision"])
         test_results[s]["object_recalls"].append(size_summary["recall"])
-        test_results[s]["mean_relative_ecd_errors"].append(size_summary["mean_relative_ecd_error"])
         test_results[s]["mean_absolute_relative_ecd_errors"].append(size_summary["mean_absolute_relative_ecd_error"])
         test_results[s]["size_stratified_rows"].append(
             {
@@ -183,11 +177,8 @@ def inner_fold(idx, K2, par_split, parameters, epochs, train_idx, test_idx, test
             f.write(f"Model {s} in fold {idx}\n")
             f.write(f"Mean IOU: {evaluation_result.mean_iou}\n")
             f.write(f"Mean Dice: {evaluation_result.mean_dice}\n")
-            f.write(f"Mean Precision: {evaluation_result.mean_precision}\n")
-            f.write(f"Mean Recall: {evaluation_result.mean_recall}\n")
             f.write(f"Object Precision: {size_summary['precision']}\n")
             f.write(f"Object Recall: {size_summary['recall']}\n")
-            f.write(f"Mean Relative ECD Error: {size_summary['mean_relative_ecd_error']}\n")
             f.write(f"Mean Absolute Relative ECD Error: {size_summary['mean_absolute_relative_ecd_error']}\n")
             f.write(f"Evaluation log: {evaluation_log_path}\n")
             f.write(f"Size-stratified paths: {evaluation_result.size_stratified_paths}")
@@ -202,7 +193,6 @@ def _extract_overall_size_summary(evaluation_result):
     default_summary = {
         "precision": np.nan,
         "recall": np.nan,
-        "mean_relative_ecd_error": np.nan,
         "mean_absolute_relative_ecd_error": np.nan,
     }
     metrics = getattr(evaluation_result, "size_stratified_metrics", None)
@@ -224,7 +214,6 @@ def _extract_overall_size_summary(evaluation_result):
     return {
         "precision": _metric_to_float(overall_row.get("precision")),
         "recall": _metric_to_float(overall_row.get("recall")),
-        "mean_relative_ecd_error": _metric_to_float(overall_row.get("mean_relative_ecd_error")),
         "mean_absolute_relative_ecd_error": _metric_to_float(
             overall_row.get("mean_absolute_relative_ecd_error")
         ),
@@ -301,15 +290,9 @@ def log_inner_fold_results(idx, parameters, inner_test_results, S):
                 f.write(f"    Loss: {inner_test_results[s]['test_losses'][i]:.5f}\n")
                 f.write(f"    IOU: {inner_test_results[s]['test_ious'][i]:.5f}\n")
                 f.write(f"    Dice: {inner_test_results[s]['test_dice_scores'][i]:.5f}\n")
-                if "test_precision_scores" in inner_test_results[s]:
-                    f.write(f"    Precision: {_format_metric(inner_test_results[s]['test_precision_scores'][i])}\n")
-                    f.write(f"    Recall: {_format_metric(inner_test_results[s]['test_recall_scores'][i])}\n")
+                if "object_precisions" in inner_test_results[s]:
                     f.write(f"    Object Precision: {_format_metric(inner_test_results[s]['object_precisions'][i])}\n")
                     f.write(f"    Object Recall: {_format_metric(inner_test_results[s]['object_recalls'][i])}\n")
-                    f.write(
-                        "    Mean Relative ECD Error: "
-                        f"{_format_metric(inner_test_results[s]['mean_relative_ecd_errors'][i])}\n"
-                    )
                     f.write(
                         "    Mean Absolute Relative ECD Error: "
                         f"{_format_metric(inner_test_results[s]['mean_absolute_relative_ecd_errors'][i])}\n"
@@ -325,25 +308,12 @@ def log_one_layer_cv_results(parameters, fold_results, best_parameter):
             f.write(f"  Test IOUs: {[float(x) for x in fold_results[s]['test_ious']]} -> Mean = {np.mean(fold_results[s]['test_ious'])}\n")
             f.write(f"  Test Dices Scores: {[float(x) for x in fold_results[s]['test_dice_scores']]} -> Mean = {np.mean(fold_results[s]['test_dice_scores'])}\n")
             f.write(
-                f"  Test Precision Scores: {_metrics_to_floats(fold_results[s]['test_precision_scores'])} "
-                f"-> Mean = {_mean_metric(fold_results[s]['test_precision_scores'])}\n"
-            )
-            f.write(
-                f"  Test Recall Scores: {_metrics_to_floats(fold_results[s]['test_recall_scores'])} "
-                f"-> Mean = {_mean_metric(fold_results[s]['test_recall_scores'])}\n"
-            )
-            f.write(
                 f"  Object Precision Scores: {_metrics_to_floats(fold_results[s]['object_precisions'])} "
                 f"-> Mean = {_mean_metric(fold_results[s]['object_precisions'])}\n"
             )
             f.write(
                 f"  Object Recall Scores: {_metrics_to_floats(fold_results[s]['object_recalls'])} "
                 f"-> Mean = {_mean_metric(fold_results[s]['object_recalls'])}\n"
-            )
-            f.write(
-                "  Mean Relative ECD Errors: "
-                f"{_metrics_to_floats(fold_results[s]['mean_relative_ecd_errors'])} "
-                f"-> Mean = {_mean_metric(fold_results[s]['mean_relative_ecd_errors'])}\n"
             )
             f.write(
                 "  Mean Absolute Relative ECD Errors: "
